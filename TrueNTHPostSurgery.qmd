@@ -1,0 +1,3472 @@
+---
+title: "TrueNTH Results"
+author: "J Bridge"
+date: "`r Sys.Date()`"
+format: 
+  html:
+    self-contained: true
+    embed-resources: true
+    code-fold: true 
+    code-summary: "Show code"
+    code-tools: true
+    code-link: true
+    code-line-numbers: true
+    code-copy: true
+    keep-md: true
+execute: 
+  warning: false
+fig-dpi: 160
+bibliography: refs.bib
+link-citations: true
+csl: rss.csl
+---
+
+```{r setup, include=F}
+knitr::opts_chunk$set(warning=F, message=F, include=T, dpi=160)
+```
+
+This report contains all code used in the analysis and the output of the results and was created using R 4.1.2 [@r] with RMarkdown. [@rmd1; @rmd2; @rmd3] Several R packages were used. [@rlang; @kableextra; @dplyr; @knitr; @ggplot2; @hmisc; @ggpcp; @amelia; @mice; @miceadds; @stringi; @miceafter; @patchwork; @flextable; @gganimate; @gifski]
+
+```{r loadPackages, warning=FALSE, message=FALSE}
+set.seed(1)
+options(digits=2)
+library(rlang)
+library(dplyr) 
+library(knitr)
+library(ggplot2)
+library(Hmisc)
+library(ggpcp)
+library(Amelia)
+library(mice)
+library(miceadds)
+library(stringi)
+library(miceafter)
+library(patchwork)
+library(flextable)
+library(gganimate)
+library(gifski)
+library(stringr)
+library(ggsci)
+library(dataMeta)
+library(DT)
+set_flextable_defaults(
+  na_str="Unknown",
+  nan_str="Unknown",
+)
+load(file="misc_files/helpers.RData") # Some helper functions are saved in an RData file
+
+l = readRDS("misc_files/TrueNTHLong.rds")
+w = readRDS("misc_files/TrueNTHWide.rds")
+```
+
+# EPIC-26
+
+EPIC-26, a short form-version of the Expanded Prostate Cancer Index Composite (EPIC), was used to collect participant reported outcome measures (PROMs). [@epic] We were mainly interested in the urinary incontinence and sexual function domains as these were identified as important by participants feedback.
+
+::: panel-tabset
+## Urinary incontinence
+
+The urinary incontinence domain has four questions (EPIC-26 questions 23, 26, 27 and 28)
+
+-   Over the past 4 weeks, how often have you leaked urine?
+-   Which of the following best describes your control during the last 4 weeks?
+-   How many pads or adult diapers per day did you usually use to control leakage during the last 4 weeks?
+-   How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping or leaking urine
+
+## Sexual function
+
+The sexual function has six questions (EPIC-26 questions 57, 58, 59, 60, 64, and 68)
+
+-   How would you rate each of the following during the last 4 weeks? Your ability to have an erection
+-   How would you rate each of the following during the last 4 weeks? Your ability to reach orgasm (climax)
+-   How would you describe the usual quality of your erections during the last 4 weeks?
+-   How would you describe the frequency of your erections during the last 4 weeks?
+-   Overall, how would you rate your ability to function sexually during the last 4 weeks?
+-   Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?
+
+## Domain scores
+
+The responses are given a numerical value based on a scale for 0 to 100, according to the EPIC scoring criteria. The mean of these values can be calculated to obtain a domain score. The score calculation allows up-to 20% missing data according to the scoring criteria; this means that the urinary incontinence domain score must have all questions answered, whereas the sexual function domain score may have one missing question. [@epic]
+:::
+
+# Data
+
+The `.csv` files extracted from the records consist of
+
+-   PROM reports named `Phase X Y.csv` where `X` is either "1" or "2" and `Y` is one of "baseline", "Month 1", "Month 3", "Month 6", "Month 12"
+-   Patient demographics in "Patient Demographics.csv"
+-   Clinical data in "BAUS.csv"
+-   Information on participant consent in "Consent.csv"
+-   Mapping of hospital ID in "BAUS.csv" to the hospital name
+
+::: panel-tabset
+## Preprocessing
+
+The PROMs were in long format and needed to be converted to wide format (by question) and then concatenated. This resulted in them being in long format by time point. The study IDs were then checked in the consent file to double check that only consented participants were included. Finally, the age at surgery was calculated for each participant using the date of birth and date of surgery. If either the date of birth or date of surgery were missing, then the age was treated as missing data.
+
+From this, the EPIC-26 domain scores needed to be calculated by converting the responses into values and calculating the mean. This follows the EPIC-26 guidance. The urinary incontinence score and sexual function score were calculated according to the EPIC-26 scoring instructions. [@epic]
+
+Some participants also reported baseline clinical variables (e.g., PSA, Gleason score, nerve sparing approach used, and D'Amico risk classification). The clinical data was contained in another file and needed to be added to the dataset.
+
+This then created a dataset in wide format. Phase (1 or 2) is the study phase, time 0 is baseline and the other times (1, 3, 6, 12) are months, study IDs are the anonymised IDs, DoB and DoS are the date of birth and date of surgery, respectively.
+
+Headings starting with `A` are answers and headings starting with `C` are coded answers. The heading numbers for refer to the original EPIC question numbers. For example, A23 is the answer for EPIC question 23 (EPIC-26 question 1) and C23 is the coded answer (0, 25, 50, 75, 100) which was used to calculate the domain score.
+
+The headings `Umiss` and `Smiss` show how many items are missing from the urinary (incontinence) and sexual (function) domains, respectively. The urinary domain allows no missing items, while the sexual domain allows 1 missing item. Uscore and Sscore are the urinary (incontinence) and sexual (function) domain scores; these are calculated as the mean of the coded items.[@epic]
+
+## Total number of participants
+
+A total of 2,030 participants were used in the final analysis, with 1,118 of those reporting clinical variables. The table below summarises the participant numbers.
+
+```{r, fig.width=4, fig.height=2}
+# Count the number of participants
+df_ccN = data.frame("Set"=c(
+  "Full analytical cohort",
+  "PROM and clinical data",
+  "PROM data only"
+  ),
+  "Number"=c(
+    n_distinct(l["Study_ID"]),
+     sum(w$Clinical_data),
+    sum(abs(1-w$Clinical_data))
+  ))
+tab = flextable(df_ccN)
+ggplot()+
+  gen_grob(tab)+
+  plot_layout(nrow=2,heights=c(0,1))
+```
+
+## Complete case data
+
+We analyse the participants with complete baseline and 12 month urinary and complete baseline and 12 month sexual function data, separately. Here, the participants with complete urinary incontinence and sexual function data at baseline and 12 months are extracted and stored as separate data frames.
+
+The number of participants with full baseline and 12 month data for urinary incontinence and sexual function outcomes is shown in the table below.
+
+```{r, fig.width=6, fig.height=4}
+# How many of the participants have complete data 
+ub = w[w$Umiss.0==0 & !is.na(w$Umiss.0),] # Number with complete urinary data at baseline
+uf = w[w$Umiss.12==0 & !is.na(w$Umiss.12),] # Number with complete urinary data at 12 months
+sb = w[w$Smiss.0==0 & !is.na(w$Assist.0) & !is.na(w$Smiss.0),] # Number with complete sexual data at baseline
+sf = w[w$Smiss.12==0 & !is.na(w$Assist.12) & !is.na(w$Smiss.12),] # Number with complete sexual data at 12 months
+uf = uf %>% filter(Study_ID %in% unique(ub$Study_ID)) # Number with complete urinary data at baseline and 12 months
+sf = sf %>% filter(Study_ID %in% unique(sb$Study_ID)) # Number with complete sexual data at baseline and 12 months
+
+df_ccN = data.frame("Set"=c(
+  "Full urinary incontinence data at baseline",
+  "Full urinary incontinence data at baseline and 12 months",
+  "Full sexual function data at baseline",
+  "Full sexual function data at baseline and 12 months"
+  ),
+  "Number"=c(
+    length(ub$Study_ID),
+    length(uf$Study_ID),
+    length(sb$Study_ID),
+    length(sf$Study_ID)
+  ))
+tab=flextable(df_ccN)
+ggplot()+
+  gen_grob(tab)+
+  plot_layout(nrow=2,heights=c(0,1))
+```
+:::
+
+# Baseline characteristics
+
+Here, we present the baseline characteristics for the PROM participants. "Missing" or "NA" indicates the number of missing responses. These are for all participants and missing data is reported. These values were used in constructing Table 2 in the manuscript.
+
+Baseline characteristics are reported for all participants, participants with PROM data only, and PROM with clinical data participants separately. For this, the participants first need to be split into these groups and stored as data frames.
+
+```{r baseline1}
+# w is the data frame with all participants
+prom = w[w$Clinical_data==0,] # PROM only
+promwc = w[w$Clinical_data==1,] # PROM with clinical data
+```
+
+::: panel-tabset
+## Ages
+
+The ages of participants at surgery time were calculated using the date of birth and date of surgery. Any date of births before 1900 and after 2000, were assumed to be entered incorrectly as these participants would not be candidates for surgery. Any surgery dates before 2015 were also assumed to be entered incorrectly as all surgeries were carried out after 2015. These values were deemed to be missing.
+
+::: panel-tabset
+### All
+
+Ages ranged from 36 to 83, with a mean of 64.7 years, with 73 missing ages.
+
+```{r, fig.width=4,fig.height=1}
+# Table of the summary data
+sum_tab(w$Age)
+```
+
+The frequencies of ages in different age categories are given in the table below with a histogram shown.
+
+```{r ages3, fig.height=8, fig.width=8}
+hist_age(w$Age, xlab='Range', ylab='Count')
+```
+
+### PROM and clinical data
+
+Ages range from 40 to 79 with a median age of 64.3. There are 17 missing ages.
+
+```{r, fig.width=4,fig.height=1}
+sum_tab(promwc$Age)
+```
+
+The frequencies of ages in different age categories are given in the table below with a histogram shown.
+
+```{r ages6, fig.height=8, fig.width=8}
+hist_age(promwc$Age, xlab='Age', ylab='Count')
+```
+
+### PROM data only
+
+Ages range from 36 to 83 with a mean of 64.2. There are 56 missing ages.
+
+```{r, fig.width=4,fig.height=1}
+sum_tab(prom$Age)
+```
+
+The frequencies of ages in different age categories are given in the table below with a histogram shown.
+
+```{r ages9, fig.height=8, fig.width=8}
+hist_age(prom$Age, xlab='Range', ylab='Count')
+```
+:::
+
+## Year of surgery
+
+Here, we present the years that the surgeries were performed.
+
+::: panel-tabset
+### All
+
+For all 2030 participants, the years of surgery are shown in the bar plot and table below.
+
+```{r surgery1, fig.height=8, fig.width=8}
+years = format(as.Date(w$DoS), format="%Y")
+bar_tab(years, xlab = "Year of surgery", ylab = "Count")
+```
+
+### PROM and clinical
+
+For the participants with clinical and PROM data, the years of surgery are shown in the bar plot and table below.
+
+```{r surgery2, fig.height=8, fig.width=8}
+years = format(as.Date(promwc$DoS), format="%Y")
+bar_tab(years, xlab = "Year of surgery", ylab = "Count")
+```
+
+### PROM only
+
+For the participants with PROM data only, the years of surgery are shown in the bar plot and table below.
+
+```{r surgery3, fig.height=8, fig.width=8}
+years = format(as.Date(prom$DoS), format="%Y")
+bar_tab(years, xlab = "Year of surgery", ylab = "Count")
+```
+:::
+
+## Ethnicities
+
+::: panel-tabset
+### All
+
+A table of the frequencies of reported ethnicities for all participants is shown below.
+
+```{r}
+tab = proc_freq(w, "Race.0")
+tab = set_header_labels(tab, Race.0="Race", Count="Number of participants")
+tab
+```
+
+### PROM and clinical
+
+A table of the frequencies of reported ethnicities for participants with clinical data available is shown below.
+
+```{r}
+tab = proc_freq(promwc, "Race.0")
+tab = set_header_labels(tab, Race.0="Race", Count="Number of participants")
+tab
+```
+
+### PROM only
+
+A table of the frequencies of reported ethnicities for participants with no clinical data available is shown below.
+
+```{r}
+tab = proc_freq(prom, "Race.0")
+tab = set_header_labels(tab, Race.0="Race", Count="Number of participants")
+tab
+```
+:::
+
+## Marital status
+
+::: panel-tabset
+### All
+
+For all participants, the number reporting marital status is shown below.
+
+```{r}
+tab = proc_freq(w, "Marital.0")
+tab = set_header_labels(tab, Marital.0="Marital status", Count="Number of participants")
+tab
+```
+
+### PROM and clinical
+
+For participants with PROM and clinical data, the number reporting marital status is shown below.
+
+```{r}
+tab = proc_freq(promwc, "Marital.0")
+tab = set_header_labels(tab, Marital.0="Marital status", Count="Number of participants")
+tab
+```
+
+### PROM
+
+For participants with PROM data only, the number reporting marital status is shown below.s
+
+```{r}
+tab = proc_freq(prom, "Marital.0")
+tab = set_header_labels(tab, Marital.0="Marital status", Count="Number of participants")
+tab 
+```
+:::
+
+## Comorbidities
+
+There were two categories for diabetes: "Diabetes" and "Diabetes". One of them had a white space making it recognised as a separate category. As there was no option for "no diabetes", it is impossible to distinguish between participants without diabetes and participants with missing data.
+
+::: panel-tabset
+### All
+
+The number of participants reporting diabetes and heart disease among all participants is shown below.
+
+```{r}
+table(w$Diabetes.0)
+table(w$HeartD.0)
+```
+
+### PROM and clinical
+
+For those with PROM and clinical data, the number reporting diabetes and heart disease is shown below.
+
+```{r}
+table(promwc$Diabetes.0)
+table(promwc$HeartD.0)
+```
+
+### PROM
+
+For those with PROM data only, the number reporting diabetes and heart disease is shown below.
+
+```{r}
+table(prom$Diabetes.0)
+table(prom$HeartD.0)
+```
+:::
+
+## Urinary
+
+Here, we show the reported baseline leakage (EPIC question 23) and pad use (EPIC question 27).[@epic]
+
+::: panel-tabset
+### All
+
+Here are the results for all participants in the analytical cohort.
+
+::: panel-tabset
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r BUrinary1, fig.height=8, fig.width=8}
+bar_tab(w$A23.0, xlab="Leakage", "Count")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r BUrinary2, fig.height=8, fig.width=8}
+bar_tab(w$A27.0, xlab="Pad use", "Count")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r BUrinary3, fig.width=8, fig.height=8}
+bar_tab2(w$A23.0, w$A27.0, "Leakage", "Count", "Pad use")
+```
+
+#### Urinary score
+
+The number reporting all four urinary incontinence domain responses to calculate the urinary incontinence score was
+
+```{r}
+as.numeric(colSums(!is.na(w["Uscore.0"])))
+```
+
+The median and interquartile range among these participants was
+
+```{r BUrinary4}
+quantile(w["Uscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+
+### PROM and clinical
+
+Here are the results for the participants who had clinical data available.
+
+::: panel-tabset
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r BUrinary5, fig.height=8,fig.width=8}
+bar_tab(promwc$A23.0, xlab="Leakage", "Count")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r BUrinary6, fig.width=8, fig.height=8}
+bar_tab(promwc$A27.0, xlab="Pad use", "Count")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r BUrinary7, fig.width=8, fig.height=8}
+bar_tab2(promwc$A23.0, promwc$A27.0, "Leakage", "Count", "Pad use")
+```
+
+#### Urinary score
+
+For participants with PROM and clinical data, the number reporting all four urinary incontinence domain responses to calculate the urinary incontinence score was
+
+```{r}
+as.numeric(colSums(!is.na(promwc["Uscore.0"])))
+```
+
+The median and interquartile range of the urinary incontinence score for these participants was
+
+```{r BUrinary8}
+quantile(promwc["Uscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+
+### PROM only
+
+Here are the results for participants who did not have clinical data available.
+
+::: panel-tabset
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r BUrinary9, fig.height=8, fig.width=8}
+bar_tab(prom$A23.0, xlab="Leakage", "Count")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r BUrinary10, fig.width=8, fig.height=8}
+bar_tab(prom$A27.0, xlab="Pad use", "Count")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r BUrinary11, fig.width=8, fig.height=8}
+bar_tab2(prom$A23.0, prom$A27.0, "Leakage", "Count", "Pad use")
+```
+
+#### Urinary score
+
+For participants with PROM data only, the number with all four urinary incontinence domain responses to calculate the urinary incontinence score was
+
+```{r}
+as.numeric(colSums(!is.na(prom["Uscore.0"])))
+```
+
+The median and interquartile range of the urinary incontinence score for these participants was
+
+```{r BUrinary12}
+quantile(prom["Uscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+:::
+
+## Sexual
+
+Here, we show the reported baseline leakage (EPIC question 59) and whether the participant used medication or devices to improve erections (this question is not included in EPIC).[@epic]
+
+::: panel-tabset
+### All
+
+::: panel-tabset
+#### Quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r BSexual1, fig.width=8, fig.height=8}
+bar_tab2(w$A59.0, w$Assist.0, "Erection", "Count", "Assistance")
+```
+
+#### Assistance
+
+Here, we present the responses for specific assistance use.
+
+```{r, fig.height=8,fig.width=8}
+assist_use(w, 0)
+```
+
+#### Score
+
+Among all participants, the number with sufficient PROMs to calculate the sexual function score was
+
+```{r}
+as.numeric(colSums(!is.na(w["Sscore.0"])))
+```
+
+The median score and interquartile range for these participants was
+
+```{r BSexual7}
+quantile(w["Sscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+
+### PROM and clinical
+
+::: panel-tabset
+#### Quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r BSexual8, fig.height=8, fig.width=8}
+bar_tab2(promwc$A59.0, promwc$Assist.0, "Erection", "Count", "Assistance")
+```
+
+#### Assistance
+
+Here, we present the responses for specific assistance use.
+
+```{r, fig.height=8,fig.width=8}
+assist_use(promwc, 0)
+
+```
+
+#### Score
+
+For participants with PROM and clinical data, the number with sufficient PROMs to calculate the sexual function score was
+
+```{r}
+as.numeric(colSums(!is.na(promwc["Sscore.0"])))
+```
+
+The median score and interquartile range for these participants was
+
+```{r BSexual14}
+quantile(promwc["Sscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+
+### PROM only
+
+::: panel-tabset
+#### Quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r BSexual15, fig.width=8,fig.height=8}
+bar_tab2(prom$A59.0, prom$Assist.0, "Erection", "Count", "Assistance")
+```
+
+#### Assistance
+
+Here, we present the responses for specific assistance use.
+
+```{r, fig.height=8,fig.width=8}
+assist_use(prom, 0)
+```
+
+#### Score
+
+For participants with PROM data only, the number with sufficient PROMs to calculate the sexual function score was
+
+```{r}
+as.numeric(colSums(!is.na(prom["Sscore.0"])))
+```
+
+The median score and interquartile range for these participants was
+
+```{r BSexual21}
+quantile(prom["Sscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+:::
+
+## Clinical variables {.tabset}
+
+These are for the participants with PROMs and clinical data only.
+
+::: panel-tabset
+### PSA
+
+Reported PSAs sorted into categories are shown in the table and bar chart below.
+
+```{r PSA1, fig.width=8,fig.height=8}
+tab = cut(as.numeric(promwc$PSA), c(0,10, 20.00001, 100000000), right=F)
+levels(tab)=c(
+  "0 to less than 10",
+  "10 to less than 20",
+  "Over 20"
+  )
+bar_tab(tab, xlab="PSA", ylab="count")
+```
+
+### Gleason score
+
+Reported Gleason scores are shown in the table and bar chart below. In the graph, "other" is grouped with missing.
+
+```{r GS1, fig.height=8,fig.width=8}
+bar_tab(promwc$GS, xlab="Gleason Score", ylab="Count")
+```
+
+For this, other was counted as unknown.
+
+### Nerve sparing approach
+
+Reported nerve sparing approaches are shown in the table and bar chart below.
+
+```{r NSA1, fig.height=8,fig.width=8}
+bar_tab(promwc$NSA, xlab="Nerve Sparing Approach", ylab="Count")
+  
+```
+
+### Lymphadenectomy
+
+Reported lymphadenectomies are shown in the table and bar chart below.
+
+```{r Lymph1, fig.height=8,fig.width=8}
+bar_tab(promwc$Lymph, xlab = "Lymphadenectomy", ylab="Count")
+```
+
+### D'Amico
+
+Reported D'Amico categories are shown in the table and bar chart below.
+
+```{r DAmico1, fig.height=8, fig.width=8}
+bar_tab(promwc$DAmico, "D'Amico risk", "Count")
+```
+
+### Surgical approach
+
+```{r SurgicalApproach, fig.height=8, fig.width=8}
+bar_tab(promwc$Approach, "Surgical approach", "Count")
+```
+:::
+
+## Surgeons and centres
+
+::: panel-tabset
+### Surgeons
+
+There were 587 missing values which have been removed to make the graph easier to read. One of the categories shown here is "other" and may include more than one surgeon.
+
+```{r, fig.height=12, fig.width=8}
+bar_tab(w$Surgeon[complete.cases(w$Surgeon)], "Surgeon", "Count")
+```
+
+### Centres
+
+```{r, fig.height=12, fig.width=8}
+bar_tab(w$Hospital_ID.0, "Centre", "Count")
+```
+:::
+:::
+
+# Histograms of domain scores
+
+Histograms showing the distributions of urinary incontinence and sexual function domain scores for each of the time points are shown in this section.
+
+::: panel-tabset
+## Urinary score
+
+::: panel-tabset
+### Baseline
+
+The median and interquartile range among the 1,996 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Uscore.0"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores at baseline is shown below.
+
+```{r}
+hist(unlist(w["Uscore.0"]), main="Histogram of urinary incontinence scores at baseline", xlab="Score")
+```
+
+### Month 1
+
+The median and interquartile range among the 1,415 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Uscore.1"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Uscore.1"]), main="Histogram of urinary incontinence scores at month 1", xlab="Score")
+```
+
+### Month 3
+
+The median and interquartile range among the 1,405 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Uscore.3"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Uscore.3"]), main="Histogram of urinary incontinence scores at month 3", xlab="Score")
+```
+
+### Month 6
+
+The median and interquartile range among the 1,360 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Uscore.6"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Uscore.6"]), main="Histogram of urinary incontinence scores at month 6", xlab="Score")
+```
+
+### Month 12
+
+The median and interquartile range among the 1,409 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Uscore.12"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Uscore.12"]), main="Histogram of urinary incontinence scores at month 12", xlab="Score")
+```
+:::
+
+## Sexual score
+
+::: panel-tabset
+### Baseline
+
+The median and interquartile range among the 1,953 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Sscore.0"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Sscore.0"]), main="Histogram of sexual function scores at baseline", xlab="Score")
+```
+
+### Month 1
+
+The median and interquartile range among the 1,368 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Sscore.1"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Sscore.1"]), main="Histogram of sexual function scores at month 1", xlab="Score")
+```
+
+### Month 3
+
+The median and interquartile range among the 1,343 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Sscore.3"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Sscore.3"]), main="Histogram of sexual function scores at month 3", xlab="Score")
+```
+
+### Month 6
+
+The median and interquartile range among the 1,321 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Sscore.6"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Sscore.6"]), main="Histogram of sexual function scores at month 6", xlab="Score")
+```
+
+### Month 12
+
+The median and interquartile range among the 1,350 participants with sufficient responses to calculate the domain score is
+
+```{r}
+quantile(w["Sscore.12"], c(.25, .5, .75), na.rm=T)
+```
+
+A histogram of the available scores shown below.
+
+```{r}
+hist(unlist(w["Sscore.12"]), main="Histogram of sexual function scores at month 12", xlab="Score")
+```
+:::
+:::
+
+# Baseline complete case results
+
+Here, reported frequencies of reported PROMs at baseline are presented. These results are used in the main body of the text. Complete case analysis using only participants with baseline data available is used so that the proportions can easily be compared.
+
+Frequencies of the reported outcomes are shown in tables. Proportions of participants are then given with 95% confidence intervals constructed using Wilson's method.
+
+::: panel-tabset
+## Urinary
+
+Participants with complete urinary continence domain question data at baseline.
+
+::: panel-tabset
+### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r , fig.width=8, fig.height=8}
+bar_tab(ub$A23.0, "Leakage", "Count")
+```
+
+Proportion rarely or never leaking urine.
+
+```{r}
+prop_conf(ub$A23.0, "Rarely or never")
+```
+
+Proportion with leakage
+
+```{r}
+prop_conf(ub$A23.0, "Rarely or never", T)
+```
+
+### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.width=8,fig.height=8}
+bar_tab(ub$A27.0, "Pad use", "Count")
+```
+
+Proportion using no pads per day.
+
+```{r}
+prop_conf(ub$A27.0, "None")
+```
+
+Proportion using pads
+
+```{r}
+prop_conf(ub$A27.0, "None", T)
+```
+
+### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.width=8,fig.height=8}
+bar_tab2(ub$A23.0, ub$A27.0, "Leakage", "Count", "Pad use", missing=F)
+```
+
+Proportion who were leak free and pad free at baseline.
+
+```{r}
+prop_conf2(ub$A23.0, ub$A27.0, "Rarely or never", "None")
+```
+
+### Urinary score
+
+The median and interquartile range was
+
+```{r}
+quantile(ub["Uscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+
+## Sexual
+
+Participants with complete sexual function domain question data at baseline.
+
+::: panel-tabset
+### Quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r, fig.width=8, fig.height=8}
+bar_tab2(sb$A59.0, sb$Assist.0, "Quality", "Count", "Medication and device Use", F, save="Figures/Figure3C.jpg")
+```
+
+Proportion with natural erections firm enough for intercourse.
+
+```{r}
+prop_conf2(sb$A59.0, sb$Assist.0, "Firm enough for intercourse", "No")
+```
+
+### Assistance
+
+There are missing values here as use of medications and devices is not included as a question in the sexual function domain.
+
+```{r, fig.height=8,fig.width=8}
+assist_use(sb, 0)
+```
+
+### Sexual function score
+
+The median and interquartile range was
+
+```{r}
+quantile(sb["Sscore.0"], c(.25, .5, .75), na.rm=T)
+```
+:::
+:::
+
+# Twelve month results
+
+Here, reported frequencies of reported PROMs at 12 months are presented. These results are used in the main body of the text. Complete case analysis using only participants with baseline and 12 month data available is used so that the proportions can easily be compared.
+
+Frequencies of the reported outcomes are shown in tables. Proportions of participants are then given with 95% confidence intervals constructed using Wilson's method.
+
+::: panel-tabset
+## Urinary
+
+::: panel-tabset
+### All
+
+::: panel-tabset
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab(uf$A23.12, "Leakage", "Count")
+```
+
+Leak free proportion
+
+```{r}
+prop_conf(uf$A23.12, "Rarely or never")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8,fig.width=8}
+bar_tab(uf$A27.12, "Pad use", "Count")
+```
+
+Pad free proportion
+
+```{r}
+prop_conf(uf$A27.12, "None")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab2(uf$A23.12, uf$A27.12, "Leakage", "Count", "Pad use", missing=F)
+```
+
+Proportion pad free and leak free
+
+```{r}
+prop_conf2(uf$A23.12, uf$A27.12, "Rarely or never", "None")
+```
+
+#### Score
+
+Median and interquartile range of the urinary function score
+
+```{r}
+quantile(uf$Uscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Spaghetti Plot
+
+Here is the spaghetti plot for all participants at all time points.
+
+```{r, warning=FALSE}
+spaghetti(l, l$Time, l$Uscore, l$Study_ID)
+```
+:::
+
+### Baseline leak-free
+
+::: panel-tabset
+```{r}
+# Temporary data frame of all leak free participants only
+temp = uf[uf$C23.0==100,]
+```
+
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab(temp$A23.12, "Leakage", "Count")
+```
+
+Leak free proportion
+
+```{r}
+prop_conf(temp$A23.12, "Rarely or never")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8,fig.width=8}
+bar_tab(temp$A27.12, "Pad use", "Count")
+```
+
+Pad free proportion
+
+```{r}
+prop_conf(temp$A27.12, "None")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab2(temp$A23.12, temp$A27.12, "Leakage", "Count", "Pad use", missing=F)
+```
+
+Proportion pad free and leak free
+
+```{r}
+prop_conf2(temp$A23.12, temp$A27.12, "Rarely or never", "None")
+```
+
+#### Score
+
+Median and interquartile range of the urinary function score
+
+```{r}
+quantile(temp$Uscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Spaghetti Plot
+
+Here is the spaghetti plot for all participants at all time points.
+
+```{r, warning=FALSE}
+d_tmp = l[l$Study_ID %in% temp$Study_ID,]
+spaghetti(d_tmp, d_tmp$Time, d_tmp$Uscore, d_tmp$Study_ID)
+```
+:::
+
+### Baseline pad-free
+
+::: panel-tabset
+```{r}
+temp = uf[uf$C27.0==100,]
+```
+
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab(temp$A23.12, "Leakage", "Count")
+```
+
+Leak free proportion
+
+```{r}
+prop_conf(temp$A23.12, "Rarely or never")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8,fig.width=8}
+bar_tab(temp$A27.12, "Pad use", "Count")
+```
+
+Pad free proportion
+
+```{r}
+prop_conf(temp$A27.12, "None")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab2(temp$A23.12, temp$A27.12, "Leakage", "Count", "Pad use", missing=F)
+```
+
+Proportion pad free and leak free
+
+```{r}
+prop_conf2(temp$A23.12, temp$A27.12, "Rarely or never", "None")
+```
+
+#### Score
+
+Median and interquartile range of the urinary function score
+
+```{r}
+quantile(temp$Uscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Spaghetti Plot
+
+Here is the spaghetti plot for all participants at all time points.
+
+```{r, warning=FALSE}
+d_tmp = l[l$Study_ID %in% temp$Study_ID,]
+spaghetti(d_tmp, d_tmp$Time, d_tmp$Uscore, d_tmp$Study_ID)
+```
+:::
+
+### Baseline leak-free and pad-free
+
+::: panel-tabset
+```{r}
+temp = uf[uf$C23.0==100 & uf$C27.0==100,]
+```
+
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab(temp$A23.12, "Leakage", "Count")
+```
+
+Leak free proportion
+
+```{r}
+prop_conf(temp$A23.12, "Rarely or never")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8,fig.width=8}
+bar_tab(temp$A27.12, "Pad use", "Count")
+```
+
+Pad free proportion
+
+```{r}
+prop_conf(temp$A27.12, "None")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab2(temp$A23.12, temp$A27.12, "Leakage", "Count", "Pad use", missing=F)
+```
+
+Proportion pad free and leak free
+
+```{r}
+prop_conf2(temp$A23.12, temp$A27.12, "Rarely or never", "None")
+```
+
+#### Score
+
+Median and interquartile range of the urinary function score
+
+```{r}
+quantile(temp$Uscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Spaghetti Plot
+
+Here is the spaghetti plot for all participants at all time points.
+
+```{r, warning=FALSE}
+d_tmp = l[l$Study_ID %in% temp$Study_ID,]
+spaghetti(d_tmp, d_tmp$Time, d_tmp$Uscore, group=d_tmp$Study_ID)
+```
+:::
+
+### Not baseline leak-free and pad-free
+
+::: panel-tabset
+```{r}
+temp = uf[(uf$C23.0!=100 | uf$C27.0!=100),]
+```
+
+#### Leakage
+
+*Q23: Over the past four weeks, how often have you leaked urine?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab(temp$A23.12, "Leakage", "Count")
+```
+
+Leak free proportion
+
+```{r}
+prop_conf(temp$A23.12, "Rarely or never")
+```
+
+#### Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8,fig.width=8}
+bar_tab(temp$A27.12, "Pad use", "Count")
+```
+
+Pad free proportion
+
+```{r}
+prop_conf(temp$A27.12, "None")
+```
+
+#### Leakage and pad use
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab2(temp$A23.12, temp$A27.12, "Leakage", "Count", "Pad use", missing=F)
+```
+
+Proportion pad free and leak free
+
+```{r}
+prop_conf2(temp$A23.12, temp$A27.12, "Rarely or never", "None")
+```
+
+#### Score
+
+Median and interquartile range of the urinary function score
+
+```{r}
+quantile(temp$Uscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Spaghetti Plot
+
+Here is the spaghetti plot for all participants at all time points.
+
+```{r, warning=FALSE}
+d_tmp = l[l$Study_ID %in% temp$Study_ID,]
+spaghetti(d_tmp, d_tmp$Time, d_tmp$Uscore, d_tmp$Study_ID)
+```
+:::
+:::
+
+## Sexual
+
+::: panel-tabset
+### All participants
+
+::: panel-tabset
+#### Erection quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r, fig.width=8, fig.height=8}
+bar_tab2(sf$A59.12, sf$Assist.12, "Quality", "Count", "Medication and device use", missing=F, save="Figures/Figure3D.jpg")
+```
+
+Proportion with adequate erections
+
+```{r}
+prop_conf(sf$A59.12, "Firm enough for intercourse")
+```
+
+Proportion with natural adequate erections
+
+```{r}
+prop_conf2(sf$A59.12, sf$Assist.12, "Firm enough for intercourse", "No")
+```
+
+Proportion with assisted adequate erections
+
+```{r}
+prop_conf2(sf$A59.12, sf$Assist.12, "Firm enough for intercourse", "Yes")
+```
+
+Proportion without adequate erections
+
+```{r}
+prop_conf(sf$A59.12, "Firm enough for intercourse", T)
+```
+
+#### Assistance use
+
+```{r, fig.height=8, fig.width=8}
+assist_use(sf, 12)
+```
+
+#### Score
+
+The median score and interquartile range was
+
+```{r}
+quantile(sf$Sscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Plot
+
+A spaghetti plot of the sexual function scores is shown below
+
+```{r, warning=FALSE}
+spaghetti(l, l$Time, l$Sscore, l$Study_ID)
+```
+:::
+
+### Natural at baseline
+
+::: panel-tabset
+```{r}
+temp=sf[sf$C59.0==100 & sf$Assist.0=="No",]
+```
+
+#### Erection quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r, fig.width=8, fig.height=8}
+bar_tab2(temp$A59.12, temp$Assist.12, "Erection", "Count", "Medication and device use", missing=F)
+```
+
+Proportion with adequate erections
+
+```{r}
+prop_conf(temp$A59.12, "Firm enough for intercourse")
+```
+
+Proportion with natural adequate erections
+
+```{r}
+prop_conf2(temp$A59.12, temp$Assist.12, "Firm enough for intercourse", "No")
+```
+
+Proportion with assisted adequate erections
+
+```{r}
+prop_conf2(temp$A59.12, temp$Assist.12, "Firm enough for intercourse", "Yes")
+```
+
+Proportion without adequate erections
+
+```{r}
+prop_conf(temp$A59.12, "Firm enough for intercourse", T)
+```
+
+#### Assistance use
+
+```{r, fig.height=8, fig.width=8}
+assist_use(temp, 12)
+```
+
+#### Score
+
+The median score and interquartile range was
+
+```{r}
+quantile(temp$Sscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Plot
+
+A spaghetti plot of the sexual function scores is shown below
+
+```{r, warning=FALSE}
+d_tmp = l[l$Study_ID %in% temp$Study_ID,]
+spaghetti(d_tmp, d_tmp$Time, d_tmp$Sscore, d_tmp$Study_ID)
+```
+:::
+
+### Not natural erections at baseline
+
+::: panel-tabset
+```{r}
+temp=sf[sf$C59.0!=100 | sf$Assist.0=="Yes",]
+```
+
+#### Erection quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Have you used any medications or devices to aid or improve erections?*
+
+```{r, fig.width=8, fig.height=8}
+bar_tab2(temp$A59.12, temp$Assist.12, "Quality", "Count", "Medication and device use", missing=F)
+```
+
+Proportion with adequate erections
+
+```{r}
+prop_conf(temp$A59.12, "Firm enough for intercourse")
+```
+
+Proportion with natural adequate erections
+
+```{r}
+prop_conf2(temp$A59.12, temp$Assist.12, "Firm enough for intercourse", "No")
+```
+
+Proportion with assisted adequate erections
+
+```{r}
+prop_conf2(temp$A59.12, temp$Assist.12, "Firm enough for intercourse", "Yes")
+```
+
+Proportion without adequate erections
+
+```{r}
+prop_conf(temp$A59.12, "Firm enough for intercourse", T)
+```
+
+#### Assistance use
+
+```{r, fig.height=8, fig.width=8}
+assist_use(temp, 12)
+```
+
+#### Score
+
+The median score and interquartile range was
+
+```{r}
+quantile(temp$Sscore.12, c(.25, .5, .75), na.rm=T)
+```
+
+#### Plot
+
+A spaghetti plot of the sexual function scores is shown below
+
+```{r, warning=FALSE}
+d_tmp = l[l$Study_ID %in% temp$Study_ID,]
+spaghetti(d_tmp, d_tmp$Time, d_tmp$Sscore, d_tmp$Study_ID)
+```
+:::
+:::
+:::
+
+# Score and definitions comparison
+
+::: panel-tabset
+## Continence recovery
+
+::: panel-tabset
+### All
+
+::: panel-tabset
+```{r URecovery1}
+# Dataset of leakage, pad-use, and urinary scores
+full_tmp = data.frame("Study_ID"=w$Study_ID, "Age"=w$Age, 
+                      "S0"=w$Sscore.0,
+                      "t0L"=w$C23.0, "t0P"=w$C27.0, "U0"=w$Uscore.0,
+                      "t1L"=w$C23.1,"t1P"=w$C27.1, "U1"=w$Uscore.1,
+                      "t3L"=w$C23.3, "t3P"=w$C27.3, "U3"=w$Uscore.3,
+                      "t6L"=w$C23.6, "t6P"=w$C27.6, "U6"=w$Uscore.6,
+                      "t12L"=w$C23.12, "t12P"=w$C27.12, "U12"=w$Uscore.12)
+# Complete case at all time points
+all_tmp = full_tmp[complete.cases(full_tmp[,
+  c("U0","U1","U3","U6","U12",
+                      "t0L", "t0P",
+                      "t1L","t1P",
+                      "t3L", "t3P",
+                      "t6L", "t6P",
+                      "t12L", "t12P"
+  )
+]),]
+```
+
+A plot of the proportion of participants leak free, pad free, and leak free pad free along with the urinary incontinence score across time is shown below.
+
+```{r}
+Uspaghetti(all_tmp, save="Figures/Figure2A.jpg")
+```
+
+#### Leak free
+
+Table of the proportion leak free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakfree(all_tmp)
+```
+
+#### Pad free
+
+Table of the proportion pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_padfree(all_tmp)
+```
+
+#### Leak and pad free
+
+Table of the proportion leak and pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakpadfree(all_tmp)
+```
+
+#### Score
+
+A table showing the median and interquartile range at the different time points is given below
+
+```{r}
+times_Uscore(all_tmp)
+```
+:::
+
+### Baseline leak-free
+
+::: panel-tabset
+```{r URecovery4, warning=F}
+full_tmp = data.frame("Study_ID"=w$Study_ID, "Age"=w$Age, "S0"=w$Sscore.0,
+                      "t0L"=w$C23.0, "t0P"=w$C27.0, "U0"=w$Uscore.0,
+                      "t1L"=w$C23.1,"t1P"=w$C27.1, "U1"=w$Uscore.1,
+                      "t3L"=w$C23.3, "t3P"=w$C27.3, "U3"=w$Uscore.3,
+                      "t6L"=w$C23.6, "t6P"=w$C27.6, "U6"=w$Uscore.6,
+                      "t12L"=w$C23.12, "t12P"=w$C27.12, "U12"=w$Uscore.12)
+full_tmp = full_tmp[full_tmp$t0L==100,]
+all_tmp = full_tmp[complete.cases(full_tmp[,
+  c("U0","U1","U3","U6","U12",
+                      "t0L", "t0P",
+                      "t1L","t1P",
+                      "t3L", "t3P",
+                      "t6L", "t6P",
+                      "t12L", "t12P"
+  )
+]),]
+```
+
+A plot of the proportion of participants leak free, pad free, and leak free pad free along with the urinary incontinence score across time is shown below.
+
+```{r}
+Uspaghetti(all_tmp)
+```
+
+#### Leak free
+
+Table of the proportion leak free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakfree(all_tmp)
+```
+
+#### Pad free
+
+Table of the proportion pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_padfree(all_tmp)
+```
+
+#### Leak and pad free
+
+Table of the proportion leak and pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakpadfree(all_tmp)
+```
+
+#### Score
+
+A table showing the median and interquartile range at the different time points is given below
+
+```{r}
+times_Uscore(all_tmp)
+```
+:::
+
+### Baseline pad-free
+
+::: panel-tabset
+```{r URecovery7, warning=F}
+full_tmp = data.frame("Study_ID"=w$Study_ID, "Age"=w$Age, "S0"=w$Sscore.0,
+                      "t0L"=w$C23.0, "t0P"=w$C27.0, "U0"=w$Uscore.0,
+                      "t1L"=w$C23.1,"t1P"=w$C27.1, "U1"=w$Uscore.1,
+                      "t3L"=w$C23.3, "t3P"=w$C27.3, "U3"=w$Uscore.3,
+                      "t6L"=w$C23.6, "t6P"=w$C27.6, "U6"=w$Uscore.6,
+                      "t12L"=w$C23.12, "t12P"=w$C27.12, "U12"=w$Uscore.12)
+full_tmp = full_tmp[full_tmp$t0P==100,]
+all_tmp = full_tmp[complete.cases(full_tmp[,
+  c("U0","U1","U3","U6","U12",
+                      "t0L", "t0P",
+                      "t1L","t1P",
+                      "t3L", "t3P",
+                      "t6L", "t6P",
+                      "t12L", "t12P"
+  )
+]),]
+```
+
+A plot of the proportion of participants leak free, pad free, and leak free pad free along with the urinary incontinence score across time is shown below.
+
+```{r}
+Uspaghetti(all_tmp)
+```
+
+#### Leak free
+
+Table of the proportion leak free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakfree(all_tmp)
+```
+
+#### Pad free
+
+Table of the proportion pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_padfree(all_tmp)
+```
+
+#### Leak and pad free
+
+Table of the proportion leak and pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakpadfree(all_tmp)
+```
+
+#### Score
+
+A table showing the median and interquartile range at the different time points is given below
+
+```{r}
+times_Uscore(all_tmp)
+```
+:::
+
+### Baseline leak and pad-free
+
+::: panel-tabset
+```{r URecovery10, warning=F}
+full_tmp = data.frame("Study_ID"=w$Study_ID, "Age"=w$Age, "S0"=w$Sscore.0,
+                      "t0L"=w$C23.0, "t0P"=w$C27.0, "U0"=w$Uscore.0,
+                      "t1L"=w$C23.1,"t1P"=w$C27.1, "U1"=w$Uscore.1,
+                      "t3L"=w$C23.3, "t3P"=w$C27.3, "U3"=w$Uscore.3,
+                      "t6L"=w$C23.6, "t6P"=w$C27.6, "U6"=w$Uscore.6,
+                      "t12L"=w$C23.12, "t12P"=w$C27.12, "U12"=w$Uscore.12)
+full_tmp = full_tmp[full_tmp$t0P==100 & full_tmp$t0L==100,]
+all_tmp = full_tmp[complete.cases(full_tmp[,
+  c("U0","U1","U3","U6","U12",
+                      "t0L", "t0P",
+                      "t1L","t1P",
+                      "t3L", "t3P",
+                      "t6L", "t6P",
+                      "t12L", "t12P"
+  )
+]),]
+```
+
+A plot of the proportion of participants leak free, pad free, and leak free pad free along with the urinary incontinence score across time is shown below.
+
+```{r}
+Uspaghetti(all_tmp, save="Figures/Figure2B.jpg")
+```
+
+#### Leak free
+
+Table of the proportion leak free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakfree(all_tmp)
+```
+
+#### Pad free
+
+Table of the proportion pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_padfree(all_tmp)
+```
+
+#### Leak and pad free
+
+Table of the proportion leak and pad free at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_leakpadfree(all_tmp)
+```
+
+#### Score
+
+A table showing the median and interquartile range at the different time points is given below
+
+```{r}
+times_Uscore(all_tmp)
+```
+:::
+:::
+
+## Sexual function recovery
+
+::: panel-tabset
+### All
+
+::: panel-tabset
+```{r SRecovery1, warning=F}
+full_tmp = data.frame("Study_ID"=w$Study_ID,"Age"=w$Age,"U0"=w$Uscore.0, 
+                      "t0L"=w$C59.0, "t0P"=w$Assist.0, "S0"=w$Sscore.0,
+                      "t1L"=w$C59.1,"t1P"=w$Assist.1, "S1"=w$Sscore.1,
+                      "t3L"=w$C59.3, "t3P"=w$Assist.3, "S3"=w$Sscore.3,
+                      "t6L"=w$C59.6, "t6P"=w$Assist.6, "S6"=w$Sscore.6,
+                      "t12L"=w$C59.12, "t12P"=w$Assist.12, "S12"=w$Sscore.12)
+
+all_tmp = full_tmp[complete.cases(full_tmp[,
+  c("S0","S1","S3","S6","S12",
+                      "t0L", "t0P",
+                      "t1L","t1P",
+                      "t3L", "t3P",
+                      "t6L", "t6P",
+                      "t12L", "t12P"
+  )
+]),]
+```
+
+```{r}
+Sspaghetti(all_tmp, save="Figures/Figure2C.jpg")
+```
+
+#### Natural erections
+
+Table of the proportion of adequate natural erections at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_natural(all_tmp)
+```
+
+#### Assisted
+
+Table of the proportion of adequate assisted erections at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_assist(all_tmp)
+```
+
+#### Median
+
+A table showing the median and interquartile range at the different time points is given below
+
+```{r}
+times_Sscore(all_tmp)
+```
+:::
+
+### Natural at baseline
+
+::: panel-tabset
+```{r SRecovery4, warning=F}
+full_tmp = data.frame("Study_ID"=w$Study_ID,"Age"=w$Age,"U0"=w$Uscore.0,
+                      "t0L"=w$C59.0, "t0P"=w$Assist.0, "S0"=w$Sscore.0,
+                      "t1L"=w$C59.1,"t1P"=w$Assist.1, "S1"=w$Sscore.1,
+                      "t3L"=w$C59.3, "t3P"=w$Assist.3, "S3"=w$Sscore.3,
+                      "t6L"=w$C59.6, "t6P"=w$Assist.6, "S6"=w$Sscore.6,
+                      "t12L"=w$C59.12, "t12P"=w$Assist.12, "S12"=w$Sscore.12)
+full_tmp = full_tmp[full_tmp$t0L==100 & full_tmp$t0P=="No",]
+all_tmp = full_tmp[complete.cases(full_tmp[,
+  c("S0","S1","S3","S6","S12",
+                      "t0L", "t0P",
+                      "t1L","t1P",
+                      "t3L", "t3P",
+                      "t6L", "t6P",
+                      "t12L", "t12P"
+  )
+]),]
+```
+
+```{r}
+Sspaghetti(all_tmp, save="Figures/Figure2D.jpg")
+```
+
+#### Natural erections
+
+Table of the proportion of adequate natural erections at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_natural(all_tmp)
+```
+
+#### Assisted
+
+Table of the proportion of adequate assisted erections at each time point with upper and lower 95% confidence intervals.
+
+```{r}
+times_assist(all_tmp)
+```
+
+#### Median
+
+A table showing the median and interquartile range at the different time points is given below
+
+```{r}
+times_Sscore(all_tmp)
+```
+:::
+:::
+:::
+
+# All time points
+
+::: panel-tabset
+## Leakage
+
+Leakage at all time points for 915 participants who reported leakage at every time point.
+
+*Q23: Over the last 4 weeks, how often have you leaked urine?*
+
+```{r, fig.width=8, fig.height=8}
+tl = w[!is.na(w$A23.0) & !is.na(w$A23.1) & !is.na(w$A23.3) & !is.na(w$A23.6) & !is.na(w$A23.12),] 
+tl = l[l$Study_ID %in% tl$Study_ID,]
+bar_tab2(tl$Time, tl$A23,"Time", "Count", "Leakage", missing=F)
+```
+
+## Pad use
+
+Leakage at all time points for 939 participants who reported leakage at every time point.
+
+*Q27: Over the last 4 weeks, how often have you leaked urine?*
+
+```{r, fig.height=8,fig.width=8}
+tl = w[!is.na(w$A27.0) & !is.na(w$A27.1) & !is.na(w$A27.3) & !is.na(w$A27.6) & !is.na(w$A27.12),] 
+tl = l[l$Study_ID %in% tl$Study_ID,]
+bar_tab2(tl$Time, tl$A27,"Time", "Count", "Pad use", missing=F)
+```
+
+## Erection quality
+
+Erection quality at all time points for 822 participants who reported erection quality at every time point.
+
+*Q59: How would you rate the usual QUALITY if your erections during the last 4 weeks?*
+
+```{r, fig.width=8, fig.height=8}
+tl = w[!is.na(w$A59.0) & !is.na(w$A59.1) & !is.na(w$A59.3) & !is.na(w$A59.6) & !is.na(w$A59.12),] 
+tl = l[l$Study_ID %in% tl$Study_ID,]
+bar_tab2(tl$Time, tl$A59,"Time", "Count", "Erection quality", missing=F)
+```
+:::
+
+# Problem scores
+
+::: panel-tabset
+Parallel coordinate plots of reported problem score for leakage, urinary function, and sexual function, for those with baseline and 12 month data available.
+
+```{r}
+lp = w[!is.na(w$A28.0) & !is.na(w$A28.12),]
+
+up = w[!is.na(w$A34.0) & !is.na(w$A34.12),]
+
+sp = w[!is.na(w$A68.0) & !is.na(w$A68.12),]
+
+```
+
+## Leaking problem
+
+*Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping or leaking urine*
+
+```{r, fig.height=12, fig.width=8}
+Lpcp(lp)
+```
+
+::: panel-tabset
+### All
+
+Twelve month results for leakage.
+
+```{r}
+tab = proc_freq(lp, "A28.12")
+tab = set_header_labels(tab, A28.12="Problem", count="Number of participants")
+tab
+```
+
+Proportion with no problems
+
+```{r}
+prop_conf(lp$A28.12, "No Problem")
+```
+
+Proportion with small problem or lower
+
+```{r}
+prop_conf(lp$A28.12, c("No Problem", "Very Small Problem", "Small Problem"))
+```
+
+### No problem at baseline
+
+Twelve month results for leakage.
+
+```{r}
+l0 = lp[lp$A28.0=="No Problem",]
+tab = proc_freq(l0, "A28.12")
+tab = set_header_labels(tab, A28.12="Problem", count="Number of participants")
+tab
+```
+
+Proportion with no problems
+
+```{r}
+prop_conf(l0$A28.12, "No Problem")
+```
+
+Proportion with small problem or lower
+
+```{r}
+prop_conf(l0$A28.12, c("No Problem", "Very Small Problem", "Small Problem"))
+```
+:::
+
+## Overall urinary problem
+
+*Q34: Overall, how big a problem has your urinary function been for you during the last 4 weeks?*
+
+```{r, fig.height=12, fig.width=8}
+Upcp(up)
+```
+
+::: panel-tabset
+### All
+
+Twelve month results for urinary function.
+
+```{r}
+tab = proc_freq(up, "A34.12")
+tab = set_header_labels(tab, A34.12="Problem", count="Number of participants")
+tab
+```
+
+Proportion with no problems
+
+```{r}
+prop_conf(up$A34.12, "No problem")
+```
+
+Proportion with small problem or lower
+
+```{r}
+prop_conf(up$A34.12, c("No problem", "Very small problem", "Small problem"))
+```
+
+### No problem at baseline
+
+Twelve month results for urinary function.
+
+```{r}
+u0 = up[up$A34.0=="No problem",]
+tab = proc_freq(u0, "A34.12")
+tab = set_header_labels(tab, A34.12="Problem", count="Number of participants")
+tab
+```
+
+Proportion with no problems
+
+```{r}
+prop_conf(u0$A34.12, "No problem")
+```
+
+Proportion with small problem or lower
+
+```{r}
+prop_conf(up$A34.12, c("No problem", "Very small problem", "Small problem"))
+```
+:::
+
+## Sexual function problem
+
+::: panel-tabset
+*Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r, fig.height=12, fig.width=8}
+Spcp(sp)
+```
+
+### All
+
+Twelve month results for sexual function.
+
+```{r}
+tab = proc_freq(sp, "A68.12")
+tab = set_header_labels(tab, A68.12="Problem", count="Number of participants")
+tab
+```
+
+Proportion with no problems
+
+```{r}
+prop_conf(sp$A68.12, "No problem")
+```
+
+Proportion with small problem or lower
+
+```{r}
+prop_conf(sp$A68.12, c("No problem", "Very small problem", "Small problem"))
+```
+
+### No problem at baseline
+
+Twelve month results for sexual function.
+
+```{r}
+s0 = sp[sp$A68.0=="No problem",]
+tab = proc_freq(s0, "A68.12")
+tab = set_header_labels(tab, A68.12="Problem", count="Number of participants")
+tab
+```
+
+Proportion with no problems
+
+```{r}
+prop_conf(sp$A68.12, "No problem")
+```
+
+Proportion with small problem or lower
+
+```{r}
+prop_conf(sp$A68.12, c("No problem", "Very small problem", "Small problem"))
+```
+:::
+:::
+
+# Problem and function
+
+This sections shows problems associated with each of the function domains.
+
+```{r}
+tl = w[!is.na(w$A23.0) & !is.na(w$A23.1) & !is.na(w$A23.3) & !is.na(w$A23.6) & !is.na(w$A23.12) &
+  !is.na(w$A28.0) & !is.na(w$A28.1) & !is.na(w$A28.3) & !is.na(w$A28.6) & !is.na(w$A28.12),]
+tp = w[!is.na(w$A27.0) & !is.na(w$A27.1) & !is.na(w$A27.3) & !is.na(w$A27.6) & !is.na(w$A27.12) &
+  !is.na(w$A28.0) & !is.na(w$A28.1) & !is.na(w$A28.3) & !is.na(w$A28.6) & !is.na(w$A28.12),]
+tq = w[!is.na(w$A59.0) & !is.na(w$A59.1) & !is.na(w$A59.3) & !is.na(w$A59.6) & !is.na(w$A59.12) &
+  !is.na(w$A68.0) & !is.na(w$A68.1) & !is.na(w$A68.3) & !is.na(w$A68.6) & !is.na(w$A68.12),]
+tf = w[!is.na(w$A60.0) & !is.na(w$A60.1) & !is.na(w$A60.3) & !is.na(w$A60.6) & !is.na(w$A60.12) &
+  !is.na(w$A68.0) & !is.na(w$A68.1) & !is.na(w$A68.3) & !is.na(w$A68.6) & !is.na(w$A68.12),]
+```
+
+::: panel-tabset
+## Leakage
+
+Comparison of the number of pads used and the leakage problem scor for those reporting leakage and leakage problem at all time points.
+
+::: panel-tabset
+### Baseline
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r, fig.height=8, fig.width=8}
+bar_tab2(tl$A23.0, tl$A28.0, "Leakage", "Count", "Problem", missing=F)
+```
+
+### Month 1
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tl$A23.1, tl$A28.1, "Leakage", "Count", "Problem", missing=F)
+```
+
+### Month 3
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tl$A23.3, tl$A28.3, "Leakage", "Count", "Problem", missing=F)
+```
+
+### Month 6
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tl$A23.6, tl$A28.6, "Leakage", "Count", "Problem", missing=F)
+```
+
+### Month 12
+
+*Q23: Over the past four weeks, how often have you leaked urine?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tl$A23.12, tl$A28.12, "Leakage", "Count", "Problem", missing=F)
+```
+:::
+
+## Pad use
+
+Comparison of the number of pads used and the leakage problem score for those reporting pad-use and leakage problem at all time points.
+
+::: panel-tabset
+### Baseline
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r PadUse1,fig.width=8,fig.height=8}
+bar_tab2(tp$A27.0, tp$A28.0, "Pads", "Count", "Problem", missing=F)
+```
+
+### Month 1
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r PadUse2,fig.width=8,fig.height=8}
+bar_tab2(tp$A27.1, tp$A28.1, "Pads", "Count", "Problem", missing=F)
+```
+
+### Month 3
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r PadUse3,fig.width=8,fig.height=8}
+bar_tab2(tp$A27.3, tp$A28.3, "Pads", "Count", "Problem", missing=F)
+```
+
+### Month 6
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r PadUse4,fig.width=8,fig.height=8}
+bar_tab2(tp$A27.6, tp$A28.6, "Pads", "Count", "Problem", missing=F)
+```
+
+### Month 12
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?* **AND** *Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping and leaking urine*
+
+```{r PadUse5,fig.width=8,fig.height=8}
+bar_tab2(tp$A27.12, tp$A28.12, "Pads", "Count", "Problem", missing=F)
+```
+:::
+
+## Erection quality
+
+::: panel-tabset
+Comparison of the erection quality and sexual function problem score for those reporting at all time points.
+
+### Baseline
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tq$A59.0, tq$A68.0, "Quality", "Count", "Problem", missing=F)
+```
+
+### Month 1
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tq$A59.1, tq$A68.1, "Quality", "Count", "Problem", missing=F)
+```
+
+### Month 3
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tq$A59.3, tq$A68.3, "Quality", "Count", "Problem", missing=F)
+```
+
+### Month 6
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tq$A59.6, tq$A68.6, "Quality", "Count", "Problem", missing=F)
+```
+
+### Month 12
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tq$A59.12, tq$A68.12, "Quality", "Count", "Problem", missing=F)
+```
+:::
+
+## Erection frequency
+
+Comparison of erection frequency and sexual function problem score for those reporting at every time point.
+
+::: panel-tabset
+### Baseline
+
+*Q60: How would you describe the FREQUENCY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tf$A60.0, tf$A68.0, "Frequency", "Count", "Problem", missing=F)
+```
+
+### Month 1
+
+*Q60: How would you describe the FREQUENCY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tf$A60.1, tf$A68.1, "Frequency", "Count", "Problem", missing=F)
+```
+
+### Month 3
+
+*Q60: How would you describe the FREQUENCY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tf$A60.3, tf$A68.3, "Frequency", "Count", "Problem", missing=F)
+```
+
+### Month 6
+
+*Q60: How would you describe the FREQUENCY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tf$A60.6, tf$A68.6, "Frequency", "Count", "Problem", missing=F)
+```
+
+### Month 12
+
+*Q60: How would you describe the FREQUENCY of your erections during the last 4 weeks?* **AND** *Q68: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tf$A60.12, tf$A68.12, "Frequency", "Count", "Problem", missing=F)
+```
+:::
+:::
+
+# Problem over time
+
+```{r}
+tl = w[!is.na(w$A28.0) & !is.na(w$A28.1) & !is.na(w$A28.3) & !is.na(w$A28.6) & !is.na(w$A28.12),]
+tu = w[!is.na(w$A34.0) & !is.na(w$A34.1) & !is.na(w$A34.3) & !is.na(w$A34.6) & !is.na(w$A34.12),]
+ts = w[!is.na(w$A68.0) & !is.na(w$A68.1) & !is.na(w$A68.3) & !is.na(w$A68.6) & !is.na(w$A68.12),] 
+tl = l[l$Study_ID %in% tl$Study_ID,]
+tu = l[l$Study_ID %in% tu$Study_ID,]
+ts = l[l$Study_ID %in% ts$Study_ID,]
+tl = tl[!is.na(tl$A28),]
+tu = tu[!is.na(tu$A34),]
+ts = ts[!is.na(ts$A68),]
+```
+
+::: panel-tabset
+## Leakage
+
+Leakage problem at all time points for 934 participants who reported leakage problem at every time point.
+
+*Q28: How big a problem, if any, has each of the following been for you during the last 4 weeks? Dripping or leaking urine.*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tl$Time, tl$A28, "Time", "Count", "Problem", missing=F)
+```
+
+## Urinary
+
+Urinary problem at all time points for 934 participants who reported urinary problem at every time point.
+
+*Q34: Overall, how big a problem has your urinary function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(tu$Time, tu$A34, "Time", "Count", "Problem", missing=F)
+```
+
+## Sexual
+
+Sexual problem at all time points for 890 participants who reported urinary problem at every time point.
+
+*Q58: Overall, how big a problem has your sexual function or lack of sexual function been for you during the last 4 weeks?*
+
+```{r,fig.width=8,fig.height=8}
+bar_tab2(ts$Time, ts$A68, "Time", "Count", "Problem", missing=F)
+```
+
+Baseline only
+
+```{r,fig.width=8,fig.height=8}
+sprob0 =  ts[ts$Time==0,]
+bar_tab(sprob0$A68, "Problem", "Count", save="Figures/Figure3A.jpg")
+```
+
+Twelve months only
+
+```{r,fig.width=8,fig.height=8}
+sprob12 =  ts[ts$Time==12,]
+bar_tab(sprob12$A68, "Problem", "Count", save="Figures/Figure3B.jpg")
+```
+:::
+
+# Comparisons
+
+These values are used in the discussion to compare with previous studies.
+
+::: panel-tabset
+## Low-risk cancer
+
+Percentage with low-risk cancer for participants with risk category reported (according to D'Amico classification)
+
+```{r}
+tmp = promwc[complete.cases(promwc$DAmico),]
+proc_freq(tmp, "DAmico")
+```
+
+## Means
+
+The scores are skewed and median should be used instead of mean (as we have shown in Section 3), the means are reported here only to compare to previous work which may have used means.
+
+Mean urinary score
+
+```{r}
+mean(uf$Uscore.12)
+```
+
+Mean sexual function score
+
+```{r}
+mean(sf$Sscore.12)
+```
+
+This excludes the unknown participants.
+
+## Medications and devices
+
+Baseline erection quality
+
+```{r}
+tmp = sf[complete.cases(sf$A59.0),]
+tab = proc_freq(tmp, "A59.0")
+tab = set_header_labels(tab,A59.0="Erection quality")
+tab
+```
+
+Of the 703 with erections firm enough for intercourse at baseline, the erection quality and medication/device use at 12 months is
+
+```{r}
+baseSuff = sf[sf$A59.0=='Firm enough for intercourse',]
+tmp = data.frame("Erection"=baseSuff$A59.12, "Assistance"=baseSuff$Assist.12)
+proc_freq(tmp, "Erection", "Assistance", include.row_percent = F, include.column_percent = F, include.table_percent = F)
+```
+:::
+
+# Parallel coordinate plots
+
+These plots can show participant progress across time. Each line represents an individual participant with the colour corresponding the final outcome at 12 months.
+
+```{r}
+u = w[!is.na(w$A23.0) & !is.na(w$A27.0) &
+      !is.na(w$A23.6) & !is.na(w$A27.6) &
+      !is.na(w$A23.12) & !is.na(w$A27.12),]
+
+s = w[!is.na(w$A59.0) & !is.na(w$A59.6) & !is.na(w$A59.12),]
+```
+
+::: panel-tabset
+## Leakage
+
+*Q23: Over the past 4 weeks, how often have you leaked urine?*
+
+```{r PCP2, fig.height=12, fig.width=8}
+plt = u |>
+  pcp_select(A23.0, A23.12) |>
+  pcp_scale() |>
+  pcp_arrange(method="from-right")|>
+  ggplot(aes_pcp()) +
+  geom_pcp_boxes(boxwidth=0.1) +
+  geom_pcp(aes(colour = A23.12), alpha = 0.1, axiswidth = c(0,0)) +
+  guides(colour=guide_legend(override.aes = list(alpha=1))) +
+  geom_pcp_labels() +
+  scale_x_discrete(expand = expansion(add=0.15),
+                   labels=c("A23.0" = "Baseline leakage",
+                            "A23.12" = "Twelve month leakage")) +
+  labs(x='Item', y='Proportion', color='Twelve month leakage') +
+  theme(legend.position="none")
+plt
+```
+
+## Pad use
+
+*Q27: How many pads per day did you usually use to control leakage during the last 4 weeks?*
+
+```{r PCP4, fig.height=12, fig.width=8}
+plt = u |>
+  pcp_select(A27.0, A27.12) |>
+  pcp_scale() |>
+  pcp_arrange(method="from-right")|>
+  ggplot(aes_pcp()) +
+  geom_pcp_boxes(boxwidth=0.1) +
+  geom_pcp(aes(colour = A27.12), alpha = 0.1, axiswidth = c(0,0)) +
+  guides(colour=guide_legend(override.aes = list(alpha=1))) +
+  geom_pcp_labels() +
+  scale_x_discrete(expand = expansion(add=0.2),
+                   labels=c("A27.0" = "Baseline pad use",
+                            "A27.12" = "Twelve month pad use")) +
+  labs(x='Item', y='Proportion', color='Twelve month pad use') +
+  theme(legend.position="none")
+plt
+```
+
+## Erection quality
+
+*Q59: How would you describe the usual QUALITY of your erections during the last 4 weeks?*
+
+```{r PCP6, fig.height=6, fig.width=8}
+plt = s |>
+  pcp_select(A59.0, A59.12) |>
+  pcp_scale() |>
+  pcp_arrange(method="from-right")|>
+  ggplot(aes_pcp()) +
+  geom_pcp_boxes(boxwidth=0.1) +
+  geom_pcp(aes(colour = A59.12), alpha = 0.1, axiswidth = c(0,0)) +
+  guides(colour=guide_legend(override.aes = list(alpha=1))) +
+  geom_pcp_labels() +
+  scale_x_discrete(expand = expansion(add=0.5),
+                   labels=c("A59.0" = "Baseline erections",
+                            "A59.12" = "Twelve month erections")) +
+  labs(x='Item', y='Proportion', color='Twelve month erections') +
+  theme(legend.position="none")
+plt
+```
+:::
+
+# Missing data
+
+Code for the multiple imputation is given here. Multiple imputation by chained equations was used. The coded question answers are treated as ordinal. Use of assistance is treated as binary. Age is treated as continuous and is given no transformation.
+
+The percentage of participants with missing responses at different time points is summarised in the table below.
+
+```{r}
+df_miss = data.frame(
+  "Item"=c("Age", 
+           "A23", "A26", "A27", "A28",
+           "A57", "A58", "A59", "A60", "A64", "A68",
+           "Assist",
+           "Any"),
+  
+  "Baseline"=c(
+    (length(w$Study_ID[is.na(w$Age)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A23.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A26.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A27.0)])/2030)*100, 
+    (length(w$Study_ID[is.na(w$A28.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A57.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A58.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A59.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A60.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A64.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A68.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Assist.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Age) | is.na(w$A23.0) | is.na(w$A26.0) | 
+                       is.na(w$A27.0) | is.na(w$A28.0) | is.na(w$A57.0) | 
+                       is.na(w$A58.0) | is.na(w$A59.0) | is.na(w$A60.0) | 
+                       is.na(w$A64.0) | is.na(w$A68.0) | is.na(w$Assist.0) 
+                       ])/2030)*100
+  ),
+  "Month 1"=c(
+    (length(w$Study_ID[is.na(w$Age)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A23.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A26.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A27.1)])/2030)*100, 
+    (length(w$Study_ID[is.na(w$A28.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A57.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A58.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A59.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A60.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A64.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A68.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Assist.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Age) | is.na(w$A23.1) | is.na(w$A26.1) | 
+                       is.na(w$A27.1) | is.na(w$A28.1) | is.na(w$A57.1) | 
+                       is.na(w$A58.1) | is.na(w$A59.1) | is.na(w$A60.1) | 
+                       is.na(w$A64.1) | is.na(w$A68.1) | is.na(w$Assist.1)  
+                       ])/2030)*100
+  ),
+  "Month 3"=c(
+    (length(w$Study_ID[is.na(w$Age)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A23.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A26.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A27.3)])/2030)*100, 
+    (length(w$Study_ID[is.na(w$A28.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A57.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A58.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A59.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A60.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A64.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A68.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Assist.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Age) | is.na(w$A23.3) | is.na(w$A26.3) | 
+                       is.na(w$A27.3) | is.na(w$A28.3) | is.na(w$A57.3) | 
+                       is.na(w$A58.3) | is.na(w$A59.3) | is.na(w$A60.3) | 
+                       is.na(w$A64.3) | is.na(w$A68.3) | is.na(w$Assist.3) 
+                       ])/2030)*100
+  ),
+  "Month 6"=c(
+    (length(w$Study_ID[is.na(w$Age)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A23.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A26.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A27.6)])/2030)*100, 
+    (length(w$Study_ID[is.na(w$A28.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A57.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A58.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A59.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A60.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A64.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A68.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Assist.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Age) | is.na(w$A23.6) | is.na(w$A26.6) | 
+                       is.na(w$A27.6) | is.na(w$A28.6) | is.na(w$A57.6) | 
+                       is.na(w$A58.6) | is.na(w$A59.6) | is.na(w$A60.6) | 
+                       is.na(w$A64.6) | is.na(w$A68.6) | is.na(w$Assist.6) 
+                       ])/2030)*100
+  ),
+  "Month 12"=c(
+    (length(w$Study_ID[is.na(w$Age)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A23.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A26.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A27.12)])/2030)*100, 
+    (length(w$Study_ID[is.na(w$A28.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A57.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A58.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A59.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A60.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A64.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A68.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Assist.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Age) | is.na(w$A23.12) | is.na(w$A26.12) | 
+                       is.na(w$A27.12) | is.na(w$A28.12) | is.na(w$A57.12) | 
+                       is.na(w$A58.12) | is.na(w$A59.12) | is.na(w$A60.12) | 
+                       is.na(w$A64.12) | is.na(w$A68.12) | is.na(w$Assist.12) 
+                       ])/2030)*100
+  ),
+  "Any"=c(
+    (length(w$Study_ID[is.na(w$Age) ])/2030)*100,
+    (length(w$Study_ID[is.na(w$A23.0) | is.na(w$A23.1) | is.na(w$A23.3)| 
+                       is.na(w$A23.6) | is.na(w$A23.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A26.0) | is.na(w$A26.1) | is.na(w$A26.3)| 
+                       is.na(w$A26.6) | is.na(w$A26.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A27.0) | is.na(w$A27.1) | is.na(w$A27.3)| 
+                       is.na(w$A27.6) | is.na(w$A27.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A28.0) | is.na(w$A28.1) | is.na(w$A28.3)| 
+                       is.na(w$A28.6) | is.na(w$A28.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A57.0) | is.na(w$A57.1) | is.na(w$A57.3)| 
+                       is.na(w$A57.6) | is.na(w$A57.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A58.0) | is.na(w$A58.1) | is.na(w$A58.3)| 
+                       is.na(w$A58.6) | is.na(w$A58.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A59.0) | is.na(w$A59.1) | is.na(w$A59.3)| 
+                       is.na(w$A59.6) | is.na(w$A59.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A60.0) | is.na(w$A60.1) | is.na(w$A60.3)| 
+                       is.na(w$A60.6) | is.na(w$A60.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A64.0) | is.na(w$A64.1) | is.na(w$A64.3)| 
+                       is.na(w$A64.6) | is.na(w$A64.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$A68.0) | is.na(w$A68.1) | is.na(w$A68.3)| 
+                       is.na(w$A68.6) | is.na(w$A68.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Assist.0) | is.na(w$Assist.1) | is.na(w$Assist.3)| 
+                       is.na(w$Assist.6) | is.na(w$Assist.12)])/2030)*100,
+    (length(w$Study_ID[
+                       is.na(w$Age) |
+                       is.na(w$A23.0) | is.na(w$A23.1) | is.na(w$A23.3)| 
+                       is.na(w$A23.6) | is.na(w$A23.12) |
+                       is.na(w$A26.0) | is.na(w$A26.1) | is.na(w$A26.3)| 
+                       is.na(w$A26.6) | is.na(w$A26.12) |
+                       is.na(w$A27.0) | is.na(w$A27.1) | is.na(w$A27.3)| 
+                       is.na(w$A27.6) | is.na(w$A27.12) |
+                       is.na(w$A28.0) | is.na(w$A28.1) | is.na(w$A28.3)| 
+                       is.na(w$A28.6) | is.na(w$A28.12) |
+                       is.na(w$A57.0) | is.na(w$A57.1) | is.na(w$A57.3)| 
+                       is.na(w$A57.6) | is.na(w$A57.12) |
+                       is.na(w$A58.0) | is.na(w$A58.1) | is.na(w$A58.3)| 
+                       is.na(w$A58.6) | is.na(w$A58.12) |
+                       is.na(w$A59.0) | is.na(w$A59.1) | is.na(w$A59.3)| 
+                       is.na(w$A59.6) | is.na(w$A59.12) | 
+                       is.na(w$A60.0) | is.na(w$A60.1) | is.na(w$A60.3)| 
+                       is.na(w$A60.6) | is.na(w$A60.12) |
+                       is.na(w$A64.0) | is.na(w$A64.1) | is.na(w$A64.3)| 
+                       is.na(w$A64.6) | is.na(w$A64.12) |
+                       is.na(w$A68.0) | is.na(w$A68.1) | is.na(w$A68.3)| 
+                       is.na(w$A68.6) | is.na(w$A68.12) |
+                       is.na(w$Assist.0) | is.na(w$Assist.1) | is.na(w$Assist.3)| 
+                       is.na(w$Assist.6) | is.na(w$Assist.12)
+                       ])/2030)*100
+  )
+  
+ 
+  
+)
+flextable(df_miss)
+```
+
+The missing responses in the urinary incontinence and sexual function domains lead to missing domain scores. The percentage of participant with missing domain scores is shown below.
+
+```{r}
+df_miss = data.frame(
+  "Item"=c("Urinary", "Sexual", "Either"),
+  
+  "Baseline"=c(
+    (length(w$Study_ID[is.na(w$Uscore.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Sscore.0)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Uscore.0) | is.na(w$Sscore.0)])/2030)*100
+  ),
+  "Month 1"=c(
+    (length(w$Study_ID[is.na(w$Uscore.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Sscore.1)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Uscore.1) | is.na(w$Sscore.1)])/2030)*100
+  ),
+  "Month 3"=c(
+    (length(w$Study_ID[is.na(w$Uscore.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Sscore.3)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Uscore.3) | is.na(w$Sscore.3)])/2030)*100
+  ),
+  "Month 6"=c(
+    (length(w$Study_ID[is.na(w$Uscore.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Sscore.6)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Uscore.6) | is.na(w$Sscore.6)])/2030)*100
+  ),
+  "Month 12"=c(
+    (length(w$Study_ID[is.na(w$Uscore.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Sscore.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Uscore.12) | is.na(w$Sscore.12)])/2030)*100
+  ),
+  "Any"=c(
+    (length(w$Study_ID[is.na(w$Uscore.0) | is.na(w$Uscore.1) | is.na(w$Uscore.3)| 
+                       is.na(w$Uscore.6) | is.na(w$Uscore.12)])/2030)*100,
+    (length(w$Study_ID[is.na(w$Sscore.0) | is.na(w$Sscore.1) | is.na(w$Sscore.3)| 
+                       is.na(w$Sscore.6) | is.na(w$Sscore.12)])/2030)*100,
+
+    (length(w$Study_ID[
+                       is.na(w$Uscore.0) | is.na(w$Uscore.1) | is.na(w$Uscore.3)| 
+                       is.na(w$Uscore.6) | is.na(w$Uscore.12) |
+                       is.na(w$Sscore.0) | is.na(w$Sscore.1) | is.na(w$Sscore.3)| 
+                       is.na(w$Sscore.6) | is.na(w$Sscore.12)
+                       ])/2030)*100
+  )
+  
+ 
+  
+)
+flextable(df_miss)
+```
+
+::: panel-tabset
+## Multiple imputation
+
+The `missmap` function in Amelia can be used to produce a missingness map.
+
+```{r}
+set.seed(1)
+
+
+
+imp = subset(w, select=c(
+               'C23.0', 'C26.0', 'C27.0', 'C28.0',
+               'C57.0', 'C58.0', 'C59.0', 'C60.0', 'C64.0', 'C68.0',
+               'C23.1', 'C26.1', 'C27.1', 'C28.1',
+               'C57.1', 'C58.1', 'C59.1', 'C60.1', 'C64.1', 'C68.1',
+               'C23.3', 'C26.3', 'C27.3', 'C28.3',
+               'C57.3', 'C58.3', 'C59.3', 'C60.3', 'C64.3', 'C68.3',
+               'C23.6', 'C26.6', 'C27.6', 'C28.6',
+               'C57.6', 'C58.6', 'C59.6', 'C60.6', 'C64.6', 'C68.6',
+               'C23.12', 'C26.12', 'C27.12', 'C28.12',
+               'C57.12', 'C58.12', 'C59.12', 'C60.12', 'C64.12', 'C68.12',
+               'Assist.0', 'Assist.1', 'Assist.3', 'Assist.6', 'Assist.12',
+               'Age'
+
+))
+
+toOrdinal <- c('C23.0', 'C26.0', 'C27.0', 'C28.0',
+               'C57.0', 'C58.0', 'C59.0', 'C60.0', 'C64.0', 'C68.0',
+               'C23.1', 'C26.1', 'C27.1', 'C28.1',
+               'C57.1', 'C58.1', 'C59.1', 'C60.1', 'C64.1', 'C68.1',
+               'C23.3', 'C26.3', 'C27.3', 'C28.3',
+               'C57.3', 'C58.3', 'C59.3', 'C60.3', 'C64.3', 'C68.3',
+               'C23.6', 'C26.6', 'C27.6', 'C28.6',
+               'C57.6', 'C58.6', 'C59.6', 'C60.6', 'C64.6', 'C68.6',
+               'C23.12', 'C26.12', 'C27.12', 'C28.12',
+               'C57.12', 'C58.12', 'C59.12', 'C60.12', 'C64.12', 'C68.12'
+               )
+imp[toOrdinal] <- lapply(imp[toOrdinal], ordered)
+
+toFactors <- c('Assist.0', 'Assist.1', 'Assist.3', 'Assist.6', 'Assist.12')
+imp[toFactors] <- lapply(imp[toFactors], as.factor)
+
+missmap(imp)
+```
+
+This shows that 25% of the total data is missing.
+
+Multiple imputation by chained equations using the domain responses with assistance use (yes/no) and participant age at surgery. As 25% of the data is missing, 25 imputed datasets are created.
+
+```{r MI1, eval=FALSE}
+# This code block will take a long time to render (possibly days).
+# Use {r, MI1, eval=FALSE} after initial run to prevent this running. 
+# After the first run the required files should already be saved.
+
+MI = mice(imp, m=25, seed=1, maxit=20)
+write.datlist(MI, 'MI/', type='csv')
+
+```
+
+## Urinary
+
+```{r}
+folder1 = 'MI/MI'
+folder2 = 'MI/UAll'
+folder3 = 'MI/UBaselineLPFree'
+folder4 = 'MI/UNBaselineLPFree'
+
+for (i in 1:25){
+
+  mi_file1 = paste(folder1,'/__IMPDATA',i,'.csv', sep='')
+  mi_file2 = paste(folder2,'/MI__IMPDATA',i,'.csv', sep='')
+  mi_file3 = paste(folder3,'/MI__IMPDATA',i,'.csv', sep='')
+  mi_file4 = paste(folder4,'/MI__IMPDATA',i,'.csv', sep='')
+
+  mi_csv = read.csv(mi_file1, header=T)
+
+  mi_csv$LeakFree = ifelse(mi_csv$C23.12==100,1,0)
+  mi_csv$PadFree = ifelse(mi_csv$C27.12==100,1,0)
+  mi_csv$LeakPadFree = ifelse(mi_csv$C23.12==100 & mi_csv$C27.12==100,1,0)
+
+  mi_lpfree = subset(mi_csv, C23.0==100 & C27.0==100)
+  mi_nlpfree = subset(mi_csv, C23.0<100 | C27.0<100)
+
+  write.csv(mi_csv, mi_file2, row.names = F)
+  write.csv(mi_lpfree, mi_file3, row.names = F)
+  write.csv(mi_nlpfree, mi_file4, row.names = F)
+
+}
+
+```
+
+::: panel-tabset
+### All
+
+Complete case results from section 5.
+
+```{r}
+df_tmp = data.frame("Type"=c("Leak Free", "Pad Free", "Leak and Pad Free"),
+                    "Point"=c(0.4459654,0.6512968,0.4200288 ),
+                    "Lower"=c(0.4200002,0.6258394,0.394319),
+                    "Upper"=c(0.4722289,0.6759191,0.4461801)
+                    )
+
+flextable(df_tmp)
+```
+
+Imputed results
+
+```{r}
+dataList = list(
+  read.csv('MI/UAll/MI__IMPDATA1.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA2.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA3.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA4.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA5.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA6.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA7.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA8.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA9.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA10.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA11.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA12.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA13.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA14.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA15.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA16.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA17.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA18.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA19.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA20.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA21.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA22.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA23.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA24.csv', header=T),
+  read.csv('MI/UAll/MI__IMPDATA25.csv', header=T)
+)
+dat = list2milist(dataList)
+
+LeakFree <- with(dat, expr=prop_wald(LeakFree ~ 1))
+LeakFree <- pool_prop_wilson(LeakFree)
+PadFree <- with(dat, expr=prop_wald(PadFree ~ 1))
+PadFree <- pool_prop_wilson(PadFree)
+LeakPadFree <- with(dat, expr=prop_wald(LeakPadFree ~ 1))
+LeakPadFree <- pool_prop_wilson(LeakPadFree)
+
+
+
+df_tmp = data.frame("Type"=c("Leak Free", "Pad Free", "Leak and Pad Free"),
+                    "Point"=c(LeakFree[1],PadFree[1],LeakPadFree[1]),
+                    "Lower"=c(LeakFree[2],PadFree[2],LeakPadFree[2]),
+                    "Upper"=c(LeakFree[3],PadFree[3],LeakPadFree[3])
+                    )
+
+flextable(df_tmp)
+
+```
+
+Plot comparing the complete case and imputed results
+
+```{r}
+Outcome_order <- c(                   
+                   'Leak and pad-free',
+                   'Pad free',
+                   'Leak free')
+
+df1 <- data.frame(Outcome=c(
+                            'Leak and pad-free',
+                            'Pad free',
+                            'Leak free'),
+                  Point=c(0.36144   ,0.62201,0.41980),
+                  Lower=c(0.33842   ,0.59763,0.39393    ),
+                  Upper=c(0.38511,0.64579,0.44613)
+                  )
+
+df1$Group <- "Imputed"
+df2 <- data.frame(Outcome=c(
+                            'Leak and pad-free',
+                            'Pad free',
+                            'Leak free'),
+                  Point=c(0.4200288 ,0.6512968  ,0.4459654  ),
+                  Lower=c(0.3943190 ,0.6258394  ,0.4200002  ),
+                  Upper=c(0.4461801 ,0.6759191  ,0.4722289)
+                  )
+df2$Group <- "Complete"
+df = rbind(df1,df2)
+df$Outcome = factor (df$Outcome, level=Outcome_order)
+
+dotCOLS = c("white","white")
+barCOLS = c("darkorange2","blue2")
+
+
+p <- ggplot(df, aes(x=Outcome, y=Point, ymin=Lower, ymax=Upper,col=Group,fill=Group)) +
+  geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+  geom_point(size=3, shape=20, colour="white", stroke = 0.5,position=position_dodge(width = 0.5)) +
+  scale_fill_manual(values=dotCOLS)+
+  scale_color_manual(values=barCOLS)+
+  scale_x_discrete(name="Outcome") +
+  scale_y_continuous(name="Proportion", limits = c(0, 1)) +
+  coord_flip() +
+  theme_light()
+p
+
+```
+
+### Baseline leak and pad free
+
+Complete case reuslts from section 5
+
+```{r}
+df_tmp = data.frame("Type"=c("Leak Free", "Pad Free", "Leak and Pad Free"),
+                    "Point"=c(0.5055249,0.6979742   ,0.4815838  ),
+                    "Lower"=c(0.4758222 ,0.6700086      ,0.4519838      ),
+                    "Upper"=c(0.5351885,0.7245442,0.5113136)
+                    )
+
+flextable(df_tmp)
+```
+
+Imputed results
+
+```{r}
+dataList = list(
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA1.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA2.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA3.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA4.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA5.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA6.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA7.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA8.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA9.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA10.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA11.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA12.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA13.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA14.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA15.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA16.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA17.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA18.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA19.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA20.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA21.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA22.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA23.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA24.csv', header=T),
+  read.csv('MI/UBaselineLPFree/MI__IMPDATA25.csv', header=T)
+)
+
+dat = list2milist(dataList)
+
+LeakFree <- with(dat, expr=prop_wald(LeakFree ~ 1))
+LeakFree <- pool_prop_wilson(LeakFree)
+PadFree <- with(dat, expr=prop_wald(PadFree ~ 1))
+PadFree <- pool_prop_wilson(PadFree)
+LeakPadFree <- with(dat, expr=prop_wald(LeakPadFree ~ 1))
+LeakPadFree <- pool_prop_wilson(LeakPadFree)
+
+df_tmp = data.frame("Type"=c("Leak Free", "Pad Free", "Leak and Pad Free"),
+                    "Point"=c(LeakFree[1],PadFree[1],LeakPadFree[1]),
+                    "Lower"=c(LeakFree[2],PadFree[2],LeakPadFree[2]),
+                    "Upper"=c(LeakFree[3],PadFree[3],LeakPadFree[3])
+                    )
+
+flextable(df_tmp)
+
+```
+
+Plot comparing the complete case and imputed results
+
+```{r}
+Outcome_order <- c(                   
+                   'Leak and pad-free',
+                   'Pad free',
+                   'Leak free')
+
+df1 <- data.frame(Outcome=c(
+                            'Leak and pad-free',
+                            'Pad free',
+                            'Leak free'),
+                  Point=c(0.41182   ,0.65992    ,0.46808    ),
+                  Lower=c(0.38519       ,0.63207    ,0.43904    ),
+                  Upper=c(0.43898,0.68670,0.49734)
+                  )
+
+df1$Group <- "Imputed"
+df2 <- data.frame(Outcome=c(
+                            'Leak and pad-free',
+                            'Pad free',
+                            'Leak free'),
+                  Point=c(0.4815838     ,0.6979742      ,0.5055249  ),
+                  Lower=c(0.38519       ,0.63207    ,0.4758222  ),
+                  Upper=c(0.5113136,0.7245442,0.5351885)
+                  )
+df2$Group <- "Complete"
+df = rbind(df1,df2)
+df$Outcome = factor (df$Outcome, level=Outcome_order)
+
+dotCOLS = c("white","white")
+barCOLS = c("darkorange2","blue2")
+
+
+p <- ggplot(df, aes(x=Outcome, y=Point, ymin=Lower, ymax=Upper,col=Group,fill=Group)) +
+  geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+  geom_point(size=3, shape=20, colour="white", stroke = 0.5,position=position_dodge(width = 0.5)) +
+  scale_fill_manual(values=dotCOLS)+
+  scale_color_manual(values=barCOLS)+
+  scale_x_discrete(name="Outcome") +
+  scale_y_continuous(name="Proportion", limits = c(0, 1)) +
+  coord_flip() +
+  theme_light()
+p
+
+```
+
+### Baseline not leak and pad free
+
+Complete case results from section 5
+
+```{r}
+df_tmp = data.frame("Type"=c("Leak Free", "Pad Free", "Leak and Pad Free"),
+                    "Point"=c(0.2317881 ,0.4834437      ,0.1986755      ),
+                    "Lower"=c(0.1877452     ,0.4276456          ,0.157583       ),
+                    "Upper"=c(0.2825686,0.5396577,0.2473375)
+                    )
+
+flextable(df_tmp)
+```
+
+Imputed results
+
+```{r}
+dataList = list(
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA1.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA2.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA3.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA4.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA5.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA6.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA7.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA8.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA9.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA10.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA11.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA12.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA13.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA14.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA15.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA16.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA17.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA18.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA19.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA20.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA21.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA22.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA23.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA24.csv', header=T),
+  read.csv('MI/UNBaselineLPFree/MI__IMPDATA25.csv', header=T)
+)
+
+dat = list2milist(dataList)
+
+LeakFree <- with(dat, expr=prop_wald(LeakFree ~ 1))
+LeakFree <- pool_prop_wilson(LeakFree)
+PadFree <- with(dat, expr=prop_wald(PadFree ~ 1))
+PadFree <- pool_prop_wilson(PadFree)
+LeakPadFree <- with(dat, expr=prop_wald(LeakPadFree ~ 1))
+LeakPadFree <- pool_prop_wilson(LeakPadFree)
+
+df_tmp = data.frame("Type"=c("Leak Free", "Pad Free", "Leak and Pad Free"),
+                    "Point Estimate"=c(LeakFree[1],PadFree[1],LeakPadFree[1]),
+                    "Lower"=c(LeakFree[2],PadFree[2],LeakPadFree[2]),
+                    "Upper"=c(LeakFree[3],PadFree[3],LeakPadFree[3])
+                    )
+
+flextable(df_tmp)
+```
+
+Plot comparing the complete case and imputed results
+
+```{r}
+Outcome_order <- c(                   
+                   'Leak and pad-free',
+                   'Pad free',
+                   'Leak free')
+
+df1 <- data.frame(Outcome=c(
+                            'Leak and pad-free',
+                            'Pad free',
+                            'Leak free'),
+                  Point=c(0.19748       ,0.49865    ,0.26270        ),
+                  Lower=c(0.15997       ,0.44946        ,0.21757        ),
+                  Upper=c(0.24127,0.54787,0.31344)
+                  )
+
+df1$Group <- "Imputed"
+df2 <- data.frame(Outcome=c(
+                            'Leak and pad-free',
+                            'Pad free',
+                            'Leak free'),
+                  Point=c(0.1986755     ,0.4834437  ,0.2317881      ),
+                  Lower=c(0.1575830     ,0.4276456      ,0.1877452  ),
+                  Upper=c(0.2473375,0.5396577,0.2825686)
+                  )
+df2$Group <- "Complete"
+df = rbind(df1,df2)
+df$Outcome = factor (df$Outcome, level=Outcome_order)
+
+dotCOLS = c("white","white")
+barCOLS = c("darkorange2","blue2")
+
+
+p <- ggplot(df, aes(x=Outcome, y=Point, ymin=Lower, ymax=Upper,col=Group,fill=Group)) +
+  geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+  geom_point(size=3, shape=20, colour="white", stroke = 0.5,position=position_dodge(width = 0.5)) +
+  scale_fill_manual(values=dotCOLS)+
+  scale_color_manual(values=barCOLS)+
+  scale_x_discrete(name="Outcome") +
+  scale_y_continuous(name="Proportion", limits = c(0, 1)) +
+  coord_flip() +
+  theme_light()
+p
+
+```
+:::
+
+## Sexual
+
+```{r}
+folder1 = 'MI/MI'
+folder2 = 'MI/SAll'
+folder3 = 'MI/SBaselineNatAd'
+folder4 = 'MI/SNBaselineNatAd'
+
+for (i in 1:25){
+
+  mi_file1 = paste(folder1,'/__IMPDATA',i,'.csv', sep='')
+  mi_file2 = paste(folder2,'/MI__IMPDATA',i,'.csv', sep='')
+  mi_file3 = paste(folder3,'/MI__IMPDATA',i,'.csv', sep='')
+  mi_file4 = paste(folder4,'/MI__IMPDATA',i,'.csv', sep='')
+
+  mi_csv = read.csv(mi_file1, header=T)
+
+  mi_csv$UAd = ifelse(mi_csv$C59.12==100 & mi_csv$Assist.12=='No',1,0)
+  mi_csv$AAd = ifelse(mi_csv$C59.12==100 & mi_csv$Assist.12=='Yes',1,0)
+  mi_csv$Inad = ifelse(mi_csv$C59.12<100,1,0)
+
+  mi_UnAd = subset(mi_csv, C59.0==100 & Assist.0=='No')
+  mi_NUnAd = subset(mi_csv, C59.0<100 | Assist.0=='Yes')
+
+  write.csv(mi_csv, mi_file2, row.names = F)
+  write.csv(mi_UnAd, mi_file3, row.names = F)
+  write.csv(mi_NUnAd, mi_file4, row.names = F)
+
+}
+```
+
+::: panel-tabset
+### All
+
+Complete case results from section 5
+
+```{r}
+df_tmp = data.frame("Type"=c("Unassisted Adequate", "Assisted adequate", "Inadequate"),
+                    "Point"=c(  0.035 ,  0.0691667   ,  0.8958333     ),
+                    "Lower"=c(  0.0259968     ,  0.0561423    , 0.877268     ),
+                    "Upper"=c(   0.0469708  ,  0.0849406   , 0.9118724  )
+                    )
+
+flextable(df_tmp)
+```
+
+Imputed results
+
+```{r}
+dataList = list(
+  read.csv('MI/SAll/MI__IMPDATA1.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA2.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA3.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA4.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA5.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA6.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA7.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA8.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA9.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA10.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA11.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA12.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA13.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA14.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA15.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA16.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA17.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA18.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA19.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA20.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA21.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA22.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA23.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA24.csv', header=T),
+  read.csv('MI/SAll/MI__IMPDATA25.csv', header=T)
+)
+dat = list2milist(dataList)
+
+UAd <- with(dat, expr=prop_wald(UAd ~ 1))
+UAd <- pool_prop_wilson(UAd)
+AAd <- with(dat, expr=prop_wald(AAd ~ 1))
+AAd <- pool_prop_wilson(AAd)
+Inad <- with(dat, expr=prop_wald(Inad ~ 1))
+Inad <- pool_prop_wilson(Inad)
+
+df_tmp = data.frame("Type"=c("Unassisted Adequate", "Assisted adequate", "Inadequate"),
+                    "Point Estimate"=c(UAd[1],AAd[1],Inad[1]),
+                    "Lower"=c(UAd[2],AAd[2],Inad[2]),
+                    "Upper"=c(UAd[3],AAd[3],Inad[3])
+                    )
+
+flextable(df_tmp)
+```
+
+Plot comparing the complete case and imputed results
+
+```{r}
+Outcome_order <- c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate')
+
+df1 <- data.frame(Outcome=c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate'),
+                  Point=c(0.89697       ,0.06824        ,0.03480        ),
+                  Lower=c(0.87990       ,0.05602            ,0.02520            ),
+                  Upper=c(0.91185,0.08288,0.04788)
+                  )
+
+df1$Group <- "Imputed"
+df2 <- data.frame(Outcome=c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate'),
+                  Point=c(0.89697       ,0.06824        ,0.03480        ),
+                  Lower=c(0.87990       ,0.05602        ,0.02520        ),
+                  Upper=c(0.91185,0.08288,0.04788)
+                  )
+df2$Group <- "Complete"
+df = rbind(df1,df2)
+df$Outcome = factor (df$Outcome, level=Outcome_order)
+
+dotCOLS = c("white","white")
+barCOLS = c("darkorange2","blue2")
+
+
+p <- ggplot(df, aes(x=Outcome, y=Point, ymin=Lower, ymax=Upper,col=Group,fill=Group)) +
+  geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+  geom_point(size=3, shape=20, colour="white", stroke = 0.5,position=position_dodge(width = 0.5)) +
+  scale_fill_manual(values=dotCOLS)+
+  scale_color_manual(values=barCOLS)+
+  scale_x_discrete(name="Outcome") +
+  scale_y_continuous(name="Proportion", limits = c(0, 1)) +
+  coord_flip() +
+  theme_light()
+p
+
+```
+
+### Baseline Natural erections
+
+Complete case results from section 5
+
+```{r}
+df_tmp = data.frame("Type"=c("Unassisted Adequate", "Assisted adequate", "Inadequate"),
+                    "Point"=c( 0.0587302      ,  0.1079365   , 0.8333333       ),
+                    "Lower"=c( 0.0429062       ,  0.0860392   , 0.80223  ),
+                    "Upper"=c(  0.0799028   ,   0.1345861  , 0.8603963  )
+                    )
+
+flextable(df_tmp)
+```
+
+Imputed results
+
+```{r}
+dataList = list(
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA1.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA2.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA3.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA4.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA5.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA6.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA7.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA8.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA9.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA10.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA11.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA12.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA13.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA14.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA15.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA16.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA17.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA18.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA19.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA20.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA21.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA22.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA23.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA24.csv', header=T),
+  read.csv('MI/SBaselineNatAd/MI__IMPDATA25.csv', header=T)
+)
+
+dat = list2milist(dataList)
+
+UAd <- with(dat, expr=prop_wald(UAd ~ 1))
+UAd <- pool_prop_wilson(UAd)
+AAd <- with(dat, expr=prop_wald(AAd ~ 1))
+AAd <- pool_prop_wilson(AAd)
+Inad <- with(dat, expr=prop_wald(Inad ~ 1))
+Inad <- pool_prop_wilson(Inad)
+
+df_tmp = data.frame("Type"=c("Unassisted Adequate", "Assisted adequate", "Inadequate"),
+                    "Point Estimate"=c(UAd[1],AAd[1],Inad[1]),
+                    "Lower"=c(UAd[2],AAd[2],Inad[2]),
+                    "Upper"=c(UAd[3],AAd[3],Inad[3])
+                    )
+
+flextable(df_tmp)
+```
+
+Plot comparing the complete case and imputed results
+
+```{r}
+Outcome_order <- c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate')
+
+df1 <- data.frame(Outcome=c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate'),
+                  Point=c(0.85174       ,0.09949        ,0.04877        ),
+                  Lower=c(0.82548       ,0.08032                    ,0.03547                ),
+                  Upper=c(0.87466,0.12263,0.06670)
+                  )
+
+df1$Group <- "Imputed"
+df2 <- data.frame(Outcome=c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate'),
+                  Point=c(0.8333333     ,0.1079365      ,0.0587302  ),
+                  Lower=c(0.8022300         ,0.0860392          ,0.0429062          ),
+                  Upper=c(0.8603963,0.1345861,0.0799028)
+                  )
+df2$Group <- "Complete"
+df = rbind(df1,df2)
+df$Outcome = factor (df$Outcome, level=Outcome_order)
+
+dotCOLS = c("white","white")
+barCOLS = c("darkorange2","blue2")
+
+
+p <- ggplot(df, aes(x=Outcome, y=Point, ymin=Lower, ymax=Upper,col=Group,fill=Group)) +
+  geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+  geom_point(size=3, shape=20, colour="white", stroke = 0.5,position=position_dodge(width = 0.5)) +
+  scale_fill_manual(values=dotCOLS)+
+  scale_color_manual(values=barCOLS)+
+  scale_x_discrete(name="Outcome") +
+  scale_y_continuous(name="Proportion", limits = c(0, 1)) +
+  coord_flip() +
+  theme_light()
+p
+
+```
+
+### Not baseline natural erections
+
+Complete case results from section 5
+
+```{r}
+df_tmp = data.frame("Type"=c("Unassisted Adequate", "Assisted adequate", "Inadequate"),
+                    "Point"=c( 0.0087719      ,  0.0263158       , 0.9649123           ),
+                    "Lower"=c( 0.0037525           ,  0.0160114   , 0.9464269    ),
+                    "Upper"=c( 0.0203682   ,   0.0429621  , 0.9771731  )
+                    )
+
+flextable(df_tmp)
+```
+
+Imputed results
+
+```{r}
+dataList = list(
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA1.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA2.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA3.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA4.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA5.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA6.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA7.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA8.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA9.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA10.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA11.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA12.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA13.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA14.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA15.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA16.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA17.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA18.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA19.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA20.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA21.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA22.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA23.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA24.csv', header=T),
+  read.csv('MI/SNBaselineNatAd/MI__IMPDATA25.csv', header=T)
+)
+
+dat = list2milist(dataList)
+
+UAd <- with(dat, expr=prop_wald(UAd ~ 1))
+UAd <- pool_prop_wilson(UAd)
+AAd <- with(dat, expr=prop_wald(AAd ~ 1))
+AAd <- pool_prop_wilson(AAd)
+Inad <- with(dat, expr=prop_wald(Inad ~ 1))
+Inad <- pool_prop_wilson(Inad)
+
+df_tmp = data.frame("Type"=c("Unassisted Adequate", "Assisted adequate", "Inadequate"),
+                    "Point Estimate"=c(UAd[1],AAd[1],Inad[1]),
+                    "Lower"=c(UAd[2],AAd[2],Inad[2]),
+                    "Upper"=c(UAd[3],AAd[3],Inad[3])
+                    )
+
+flextable(df_tmp)
+```
+
+Plot comparing the complete case and imputed results
+
+```{r}
+Outcome_order <- c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate')
+
+df1 <- data.frame(Outcome=c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate'),
+                  Point=c(0.94404       ,0.03571            ,0.02026            ),
+                  Lower=c(0.92177       ,0.02424                        ,0.01027                ),
+                  Upper=c(0.96024,0.05231,0.03958)
+                  )
+
+df1$Group <- "Imputed"
+df2 <- data.frame(Outcome=c(                   
+                   'Inadequate',
+                   'Assisted adequate',
+                   'Unassisted adequate'),
+                  Point=c(0.9649123     ,0.0263158      ,0.0087719      ),
+                  Lower=c(0.9464269         ,0.0160114              ,0.0037525              ),
+                  Upper=c(0.9771731 ,0.0429621,0.0203682)
+                  )
+df2$Group <- "Complete"
+df = rbind(df1,df2)
+df$Outcome = factor (df$Outcome, level=Outcome_order)
+
+dotCOLS = c("white","white")
+barCOLS = c("darkorange2","blue2")
+
+
+p <- ggplot(df, aes(x=Outcome, y=Point, ymin=Lower, ymax=Upper,col=Group,fill=Group)) +
+  geom_linerange(size=5,position=position_dodge(width = 0.5)) +
+  geom_point(size=3, shape=20, colour="white", stroke = 0.5,position=position_dodge(width = 0.5)) +
+  scale_fill_manual(values=dotCOLS)+
+  scale_color_manual(values=barCOLS)+
+  scale_x_discrete(name="Outcome") +
+  scale_y_continuous(name="Proportion", limits = c(0, 1)) +
+  coord_flip() +
+  theme_light()
+p
+
+```
+:::
+:::
+
+# References
